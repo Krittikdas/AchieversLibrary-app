@@ -601,6 +601,7 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
             transactions={targetBranchTransactions}
             onRenew={() => { }}
             onBack={() => setAdminViewBranchId(null)}
+            readOnly={true}
           />
         );
       }

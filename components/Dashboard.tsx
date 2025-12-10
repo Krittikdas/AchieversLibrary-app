@@ -12,12 +12,13 @@ interface DashboardProps {
     transactions: Transaction[];
     onRenew: (member: Member) => void;
     onBack?: () => void;
+    readOnly?: boolean;
 }
 
 type DashboardView = 'OVERVIEW' | 'SNACKS' | 'JOINING' | 'MEMBERS';
 type MemberFilter = 'ALL' | 'ACTIVE' | 'EXPIRING' | 'EXPIRED';
 
-export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onRenew, onBack }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onRenew, onBack, readOnly }) => {
     const [view, setView] = useState<DashboardView>('OVERVIEW');
     const [memberFilter, setMemberFilter] = useState<MemberFilter>('ALL');
     const [paymentModeFilter, setPaymentModeFilter] = useState<'ALL' | 'CASH' | 'UPI'>('ALL');
@@ -548,7 +549,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
                                             <span className={`inline - flex items - center px - 2.5 py - 0.5 rounded - full text - xs font - medium ${statusClasses} `}>
                                                 {status}
                                             </span>
-                                            {(status === 'EXPIRING' || status === 'EXPIRED') && (
+                                            {(status === 'EXPIRING' || status === 'EXPIRED') && !readOnly && (
                                                 <button
                                                     onClick={() => onRenew(m)}
                                                     className="ml-3 px-4 py-1.5 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white text-xs font-semibold rounded-full hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-sm hover:shadow-md flex items-center inline-flex gap-1.5"
