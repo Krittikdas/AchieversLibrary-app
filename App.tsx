@@ -437,14 +437,16 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
   const handleMemberRegistration = async (member: Member, amount: number, paymentMode: 'CASH' | 'UPI') => {
     if (!profile?.branch_id) return;
 
-    // Insert Member
+    // Insert or Update Member (Upsert)
     const { data: newMember, error: memberError } = await supabase
       .from('members')
-      .insert({
+      .upsert({
+        id: member.id, // Explicitly include ID for upsert
         full_name: member.full_name,
         address: member.address,
         phone: member.phone,
         email: member.email,
+        join_date: member.join_date,
         expiry_date: member.expiry_date,
         subscription_plan: member.subscription_plan,
         daily_access_hours: member.daily_access_hours,
@@ -482,7 +484,7 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
       if (newMember && newTx) {
         setAppState(prev => ({
           ...prev,
-          members: [...prev.members, newMember],
+          members: [...prev.members.filter(m => m.id !== newMember.id), newMember], // Remove existing if present (update case)
           transactions: [...prev.transactions, newTx]
         }));
       }

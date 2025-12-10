@@ -80,17 +80,21 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
 
   const checkDuplicates = async () => {
     // Check for existing member with same Phone OR Email in this branch
-    const { data, error } = await supabase
+    let query = supabase
       .from('members')
       .select('id')
       .or(`email.eq.${formData.email},phone.eq.${formData.phone}`)
       .eq('branch_id', branchId);
 
+    if (initialData?.id) {
+      query = query.neq('id', initialData.id);
+    }
+
+    const { data, error } = await query;
+
     if (error) {
       console.error("Error checking duplicates:", error);
-      return true; // Fail safe, allow registration or block? Let's allow but log. Actually better to block if we can't be sure, but for now let's assume no duplicate if error to avoid blocking valid users on network blip. Wait, standard is to fail open or closed? detailed plan said "Show error".
-      // Let's return false (no duplicates found) but log error.
-      // Actually, safest is to alert user "Network error checking duplicates".
+      return true;
     }
 
     if (data && data.length > 0) {
@@ -144,12 +148,12 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
       const expiryDate = calculateExpiryDate();
 
       const newMember: Member = {
-        id: crypto.randomUUID(),
+        id: initialData?.id || crypto.randomUUID(),
         full_name: formData.fullName,
         address: formData.address,
         phone: formData.phone,
         email: formData.email,
-        join_date: new Date().toISOString(),
+        join_date: initialData?.join_date || new Date().toISOString(),
         expiry_date: expiryDate,
         subscription_plan: planLabel,
         daily_access_hours: formData.dailyAccessHours,
