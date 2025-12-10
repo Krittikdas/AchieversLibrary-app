@@ -45,7 +45,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
         if (paymentModeFilter === 'ALL') return members;
         const targetMemberIds = new Set(
             transactions
-                .filter(t => t.type === TransactionType.MEMBERSHIP && t.payment_mode === paymentModeFilter)
+                .filter(t => t.type === TransactionType.MEMBERSHIP && t.payment_mode?.toUpperCase() === paymentModeFilter)
                 .map(t => t.member_id)
         );
         return members.filter(m => targetMemberIds.has(m.id));
@@ -75,7 +75,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
 
         return transactions
             .filter(t => new Date(t.timestamp) >= cutoff)
-            .filter(t => paymentModeFilter === 'ALL' || t.payment_mode === paymentModeFilter)
+            .filter(t => paymentModeFilter === 'ALL' || t.payment_mode?.toUpperCase() === paymentModeFilter)
             .reduce((sum, t) => sum + t.amount, 0);
     };
 
@@ -91,7 +91,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
         return transactions
             .filter(t => new Date(t.timestamp) >= cutoff)
             .filter(t => t.type === TransactionType.SNACK)
-            .filter(t => paymentModeFilter === 'ALL' || t.payment_mode === paymentModeFilter)
+            .filter(t => paymentModeFilter === 'ALL' || t.payment_mode?.toUpperCase() === paymentModeFilter)
             .reduce((sum, t) => sum + t.amount, 0);
     };
 
@@ -137,9 +137,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
             }
         });
 
-        // Better approach: Iterate transactions to get precise daily revenue from memberships
         transactions.forEach(t => {
-            if (t.type === TransactionType.MEMBERSHIP && (paymentModeFilter === 'ALL' || t.payment_mode === paymentModeFilter)) {
+            if (t.type === TransactionType.MEMBERSHIP && (paymentModeFilter === 'ALL' || t.payment_mode?.toUpperCase() === paymentModeFilter)) {
                 const d = new Date(t.timestamp);
                 const cutoff = new Date();
                 cutoff.setDate(cutoff.getDate() - days);
@@ -201,7 +200,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
             const cutoff = new Date();
             cutoff.setDate(cutoff.getDate() - days);
 
-            if (d >= cutoff && (paymentModeFilter === 'ALL' || t.payment_mode === paymentModeFilter)) {
+            if (d >= cutoff && (paymentModeFilter === 'ALL' || t.payment_mode?.toUpperCase() === paymentModeFilter)) {
                 const dateKey = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                 if (data[dateKey]) {
                     if (t.type === TransactionType.SNACK) data[dateKey].snacks += t.amount;
