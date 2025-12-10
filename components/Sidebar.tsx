@@ -78,19 +78,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, curre
           })}
         </nav>
 
-        <div className="p-4 border-t border-slate-100">
-          <button
-            onClick={() => {
-              onClose();
-              onLogout();
-            }}
-            className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-red-600 hover:bg-red-50 hover:text-red-700 transition-all duration-200"
-          >
-            <LogOut size={20} />
-            <span>Logout</span>
-          </button>
-        </div>
-
       </div>
     </>
   );

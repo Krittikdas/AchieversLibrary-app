@@ -549,7 +549,15 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      // Force cleanup and redirect
+      localStorage.clear();
+      window.location.reload();
+    }
   };
 
   const renderContent = () => {
