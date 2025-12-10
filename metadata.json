@@ -1,0 +1,7 @@
+{
+  "name": "Copy of LibraSync - Distributed Library Management",
+  "description": "A multi-branch library management system with isolated branch databases, central syncing, UPI payments, and AI-assisted administration.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
