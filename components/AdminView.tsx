@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { AppState, Branch, Member, Transaction } from '../types';
 import { MOCK_BRANCHES } from '../constants';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Building2, DollarSign, Users, Filter, Plus, Save, Eye, EyeOff, Download } from 'lucide-react';
+import { Building2, IndianRupee, Users, Filter, Plus, Save, Eye, EyeOff, Download } from 'lucide-react';
 
 interface AdminViewProps {
   state: AppState;
@@ -123,7 +123,7 @@ const DataExportSection: React.FC<DataExportSectionProps> = ({ branches, members
                         onClick={() => handleExportSales(branch.id, branch.name)}
                         className="flex items-center space-x-1 px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-lg hover:bg-emerald-100 transition-colors border border-emerald-200"
                       >
-                        <DollarSign size={14} />
+                        <IndianRupee size={14} />
                         <span>Sales</span>
                       </button>
                     </div>
@@ -297,7 +297,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ state, onViewBranch }) => 
               </p>
               <h3 className="text-4xl font-bold">₹{totalSystemRevenue.toLocaleString()}</h3>
             </div>
-            <DollarSign className="opacity-50" size={32} />
+            <IndianRupee className="opacity-50" size={32} />
           </div>
         </div>
 
