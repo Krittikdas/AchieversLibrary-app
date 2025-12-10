@@ -219,8 +219,10 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
           {/* Personal Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Full Name *</label>
+              <label htmlFor="full-name" className="block text-sm font-medium text-slate-700 mb-1">Full Name *</label>
               <input
+                id="full-name"
+                name="fullName"
                 type="text"
                 value={formData.fullName}
                 onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
@@ -231,8 +233,10 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number *</label>
+              <label htmlFor="phone" className="block text-sm font-medium text-slate-700 mb-1">Phone Number *</label>
               <input
+                id="phone"
+                name="phone"
                 type="text"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
@@ -243,8 +247,10 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Email Address *</label>
+              <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1">Email Address *</label>
               <input
+                id="email"
+                name="email"
                 type="text"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -255,8 +261,10 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Study Purpose / Occupation *</label>
+              <label htmlFor="study-purpose" className="block text-sm font-medium text-slate-700 mb-1">Study Purpose / Occupation *</label>
               <input
+                id="study-purpose"
+                name="studyPurpose"
                 type="text"
                 value={formData.studyPurpose}
                 onChange={(e) => setFormData({ ...formData, studyPurpose: e.target.value })}
@@ -267,8 +275,10 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Residential Address *</label>
+              <label htmlFor="address" className="block text-sm font-medium text-slate-700 mb-1">Residential Address *</label>
               <textarea
+                id="address"
+                name="address"
                 rows={2}
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
@@ -284,8 +294,10 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
           {/* Subscription & Administrative */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Duration Plan</label>
+              <label htmlFor="subscription-plan" className="block text-sm font-medium text-slate-700 mb-1">Duration Plan</label>
               <select
+                id="subscription-plan"
+                name="subscriptionPlan"
                 value={formData.subscriptionPlan}
                 onChange={(e) => setFormData({ ...formData, subscriptionPlan: e.target.value as SubscriptionPlan })}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-200 focus:outline-none bg-white"
@@ -297,8 +309,10 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Daily Access Limit</label>
+              <label htmlFor="daily-access-hours" className="block text-sm font-medium text-slate-700 mb-1">Daily Access Limit</label>
               <select
+                id="daily-access-hours"
+                name="dailyAccessHours"
                 value={formData.dailyAccessHours}
                 onChange={(e) => setFormData({ ...formData, dailyAccessHours: e.target.value as AccessHours })}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-200 focus:outline-none bg-white"
@@ -312,8 +326,10 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
             {formData.subscriptionPlan === SubscriptionPlan.CUSTOM && (
               <div className="md:col-span-2 grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Duration Value</label>
+                  <label htmlFor="custom-duration-value" className="block text-sm font-medium text-slate-700 mb-1">Duration Value</label>
                   <input
+                    id="custom-duration-value"
+                    name="customDurationValue"
                     type="number"
                     value={formData.customDurationValue}
                     onChange={(e) => setFormData({ ...formData, customDurationValue: e.target.value })}
@@ -323,8 +339,10 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
                   {errors.customDuration && <p className="text-red-500 text-xs mt-1">{errors.customDuration}</p>}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Duration Unit</label>
+                  <label htmlFor="custom-duration-unit" className="block text-sm font-medium text-slate-700 mb-1">Duration Unit</label>
                   <select
+                    id="custom-duration-unit"
+                    name="customDurationUnit"
                     value={formData.customDurationUnit}
                     onChange={(e) => setFormData({ ...formData, customDurationUnit: e.target.value as 'DAYS' | 'MONTHS' })}
                     className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-200 focus:outline-none bg-white"
@@ -337,8 +355,10 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
             )}
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Price (₹) *</label>
+              <label htmlFor="price" className="block text-sm font-medium text-slate-700 mb-1">Price (₹) *</label>
               <input
+                id="price"
+                name="price"
                 type="number"
                 value={formData.price}
                 onChange={(e) => setFormData({ ...formData, price: e.target.value })}
@@ -375,8 +395,10 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Receptionist Name (Registered By) *</label>
+              <label htmlFor="registered-by" className="block text-sm font-medium text-slate-700 mb-1">Receptionist Name (Registered By) *</label>
               <input
+                id="registered-by"
+                name="registeredBy"
                 type="text"
                 value={formData.registeredBy}
                 onChange={(e) => setFormData({ ...formData, registeredBy: e.target.value })}

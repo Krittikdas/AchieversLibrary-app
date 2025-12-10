@@ -209,8 +209,10 @@ const LoginPage: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
 
           <form onSubmit={handleResetPassword} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700">Email Address</label>
+              <label htmlFor="reset-email" className="block text-sm font-medium text-slate-700">Email Address</label>
               <input
+                id="reset-email"
+                name="resetEmail"
                 value={resetEmail}
                 onChange={e => setResetEmail(e.target.value)}
                 type="email"
@@ -271,8 +273,10 @@ const LoginPage: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
           <form onSubmit={handleLogin} className="space-y-4">
             {tab === 'RECEPTION' && (
               <div>
-                <label className="block text-sm font-medium text-slate-700">Branch</label>
+                <label htmlFor="login-branch" className="block text-sm font-medium text-slate-700">Branch</label>
                 <select
+                  id="login-branch"
+                  name="branchId"
                   value={selectedBranchId}
                   onChange={e => setSelectedBranchId(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-200"
@@ -285,8 +289,10 @@ const LoginPage: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-slate-700">Email</label>
+              <label htmlFor="login-email" className="block text-sm font-medium text-slate-700">Email</label>
               <input
+                id="login-email"
+                name="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 type="email"
@@ -296,9 +302,11 @@ const LoginPage: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700">Password</label>
+              <label htmlFor="login-password" className="block text-sm font-medium text-slate-700">Password</label>
               <div className="relative">
                 <input
+                  id="login-password"
+                  name="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   type={showPassword ? 'text' : 'password'}
