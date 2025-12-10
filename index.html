@@ -1,46 +1,54 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LibraSync Management</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              indigo: {
-                50: '#f9f5fb',
-                100: '#f3ebf7',
-                200: '#e1d0eb',
-                300: '#c6a8d8',
-                400: '#a77bc0',
-                500: '#8e56a6',
-                600: '#864d99',
-                700: '#713e83',
-                800: '#5e346d',
-                900: '#4e2d59',
-                950: '#2f1438',
-              }
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Achievers Library</title>
+  <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            indigo: {
+              50: '#f9f5fb',
+              100: '#f3ebf7',
+              200: '#e1d0eb',
+              300: '#c6a8d8',
+              400: '#a77bc0',
+              500: '#8e56a6',
+              600: '#864d99',
+              700: '#713e83',
+              800: '#5e346d',
+              900: '#4e2d59',
+              950: '#2f1438',
             }
           }
         }
       }
-    </script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-      body { font-family: 'Inter', sans-serif; }
-      /* Hide scrollbar for Chrome, Safari and Opera */
-      .no-scrollbar::-webkit-scrollbar {
-          display: none;
-      }
-      /* Hide scrollbar for IE, Edge and Firefox */
-      .no-scrollbar {
-          -ms-overflow-style: none;  /* IE and Edge */
-          scrollbar-width: none;  /* Firefox */
-      }
-    </style>
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* Hide scrollbar for Chrome, Safari and Opera */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    /* Hide scrollbar for IE, Edge and Firefox */
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      /* IE and Edge */
+      scrollbar-width: none;
+      /* Firefox */
+    }
+  </style>
   <script type="importmap">
 {
   "imports": {
@@ -53,10 +61,12 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
+  <link rel="stylesheet" href="/index.css">
 </head>
-  <body class="bg-slate-50 text-slate-900 antialiased">
-    <div id="root"></div>
+
+<body class="bg-slate-50 text-slate-900 antialiased">
+  <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>
+
 </html>
