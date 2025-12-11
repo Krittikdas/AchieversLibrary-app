@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, UserPlus, Coffee, Receipt, Building2, LogOut, X, Users, UtensilsCrossed } from 'lucide-react';
+import { LayoutDashboard, UserPlus, Coffee, Receipt, Building2, LogOut, X, Users, UtensilsCrossed, CreditCard, Lock } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;
@@ -16,6 +16,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, curre
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, role: 'ALL' },
     { id: 'register', label: 'New Member', icon: UserPlus, role: 'RECEPTION' },
     { id: 'snacks', label: 'Snack POS', icon: Coffee, role: 'RECEPTION' },
+    { id: 'cards', label: 'Card Management', icon: CreditCard, role: 'RECEPTION' },
+    { id: 'lockers', label: 'Lockers', icon: Lock, role: 'RECEPTION' },
     { id: 'create_branch', label: 'Make New Branch', icon: Building2, role: 'ADMIN' },
     { id: 'receptionists', label: 'Receptionists', icon: Users, role: 'ADMIN' },
     { id: 'manage_snacks', label: 'Manage Snacks', icon: UtensilsCrossed, role: 'ADMIN' },

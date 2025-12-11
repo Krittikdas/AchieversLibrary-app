@@ -408,6 +408,8 @@ export const AdminBranchCreation: React.FC<AdminBranchCreationProps> = ({ branch
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [location, setLocation] = useState('');
+  const [totalCards, setTotalCards] = useState('0');
+  const [totalLockers, setTotalLockers] = useState('0');
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -424,7 +426,7 @@ export const AdminBranchCreation: React.FC<AdminBranchCreationProps> = ({ branch
       // 1. Create Branch in DB
       const { data: branchData, error: branchError } = await supabase
         .from('branches')
-        .insert({ name, location, email })
+        .insert({ name, location, email, total_cards: parseInt(totalCards, 10) || 0, total_lockers: parseInt(totalLockers, 10) || 0 })
         .select()
         .single();
 
@@ -461,6 +463,8 @@ export const AdminBranchCreation: React.FC<AdminBranchCreationProps> = ({ branch
       setEmail('');
       setPassword('');
       setLocation('');
+      setTotalCards('0');
+      setTotalLockers('0');
       setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
       setError(err.message || 'Failed to create branch');
@@ -531,6 +535,32 @@ export const AdminBranchCreation: React.FC<AdminBranchCreationProps> = ({ branch
                 className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                 placeholder="e.g. Sector 45, West City"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Total Cards Available</label>
+              <input
+                type="number"
+                min="0"
+                value={totalCards}
+                onChange={e => setTotalCards(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                placeholder="e.g. 50"
+              />
+              <p className="text-xs text-slate-500 mt-1">Number of library cards allocated to this branch (₹100 each)</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Total Lockers Available</label>
+              <input
+                type="number"
+                min="0"
+                value={totalLockers}
+                onChange={e => setTotalLockers(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                placeholder="e.g. 20"
+              />
+              <p className="text-xs text-slate-500 mt-1">Number of lockers allocated to this branch (₹200 each)</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

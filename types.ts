@@ -9,12 +9,15 @@ export enum SubscriptionPlan {
 export enum AccessHours {
   HOURS_6 = '6 Hours',
   HOURS_12 = '12 Hours',
-  HOURS_24 = '24 Hours'
+  HOURS_24 = '24 Hours',
+  CUSTOM = 'Custom Hours'
 }
 
 export enum TransactionType {
   MEMBERSHIP = 'MEMBERSHIP',
-  SNACK = 'SNACK'
+  SNACK = 'SNACK',
+  CARD = 'CARD',
+  LOCKER = 'LOCKER'
 }
 
 export interface Member {
@@ -30,6 +33,11 @@ export interface Member {
   study_purpose: string;
   registered_by: string;
   branch_id: string;
+  card_issued?: boolean;
+  card_payment_mode?: 'CASH' | 'UPI';
+  card_returned?: boolean;
+  locker_assigned?: boolean;
+  locker_payment_mode?: 'CASH' | 'UPI' | 'INCLUDED';
 }
 
 export interface Transaction {
@@ -41,7 +49,9 @@ export interface Transaction {
   member_id?: string;
   branch_id: string;
   status: 'PENDING' | 'COMPLETED';
-  payment_mode?: 'CASH' | 'UPI';
+  payment_mode?: 'CASH' | 'UPI' | 'SPLIT';
+  cash_amount?: number;
+  upi_amount?: number;
 }
 
 export interface Branch {
@@ -49,7 +59,8 @@ export interface Branch {
   name: string;
   location: string;
   email: string;
-  // password is not stored in public.branches anymore, handled by auth.users
+  total_cards?: number;
+  total_lockers?: number;
 }
 
 export interface AppState {

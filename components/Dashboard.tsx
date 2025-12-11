@@ -1,8 +1,10 @@
 
 
 import React, { useState } from 'react';
-import { Member, Transaction, TransactionType } from '../types';
-import { Users, TrendingUp, Clock, AlertCircle, Calendar, Filter, Search, UserPlus, RefreshCw } from 'lucide-react';
+import { Member, Transaction, TransactionType, Branch } from '../types';
+import { Users, TrendingUp, Clock, AlertCircle, Calendar, Filter, Search, UserPlus, RefreshCw, CreditCard, Lock } from 'lucide-react';
+import { CardManagement } from './CardManagement';
+import { LockerManagement } from './LockerManagement';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from 'recharts';
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
@@ -13,16 +15,23 @@ interface DashboardProps {
     onRenew: (member: Member) => void;
     onBack?: () => void;
     readOnly?: boolean;
+    onIssueCard?: (memberId: string, paymentMode: 'CASH' | 'UPI') => void;
+    onReturnCard?: (memberId: string) => void;
+    onAssignLocker?: (memberId: string, paymentMode: 'CASH' | 'UPI' | 'INCLUDED') => void;
+    onReturnLocker?: (memberId: string) => void;
+    branch?: Branch;
 }
 
-type DashboardView = 'OVERVIEW' | 'SNACKS' | 'JOINING' | 'MEMBERS';
+type DashboardView = 'OVERVIEW' | 'SNACKS' | 'JOINING' | 'MEMBERS' | 'CARDS' | 'LOCKERS';
 type MemberFilter = 'ALL' | 'ACTIVE' | 'EXPIRING' | 'EXPIRED';
 
-export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onRenew, onBack, readOnly }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onRenew, onBack, readOnly, onIssueCard, onReturnCard, onAssignLocker, onReturnLocker, branch }) => {
     const [view, setView] = useState<DashboardView>('OVERVIEW');
     const [memberFilter, setMemberFilter] = useState<MemberFilter>('ALL');
     const [paymentModeFilter, setPaymentModeFilter] = useState<'ALL' | 'CASH' | 'UPI'>('ALL');
     const [searchTerm, setSearchTerm] = useState('');
+    const [cardIssuePopup, setCardIssuePopup] = useState<string | null>(null); // member id for popup
+    const [lockerAssignPopup, setLockerAssignPopup] = useState<string | null>(null); // member id for popup
 
     // --- Calculations ---
     const today = new Date();
@@ -45,18 +54,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
         if (paymentModeFilter === 'ALL') return members;
         const targetMemberIds = new Set(
             transactions
-                .filter(t => t.type === TransactionType.MEMBERSHIP && t.payment_mode?.toUpperCase() === paymentModeFilter)
+                .filter(t => {
+                    if (t.type !== TransactionType.MEMBERSHIP && t.type !== TransactionType.LOCKER) return false; // Include locker transactions for joining report if they are tied to a member
+                    if (paymentModeFilter === 'CASH') {
+                        return t.payment_mode === 'CASH' || (t.payment_mode === 'SPLIT' && (t.cash_amount || 0) > 0);
+                    } else if (paymentModeFilter === 'UPI') {
+                        return t.payment_mode === 'UPI' || (t.payment_mode === 'SPLIT' && (t.upi_amount || 0) > 0);
+                    }
+                    return false;
+                })
                 .map(t => t.member_id)
         );
         return members.filter(m => targetMemberIds.has(m.id));
     }, [members, transactions, paymentModeFilter]);
 
     const filteredMembers = members.filter(m => {
+        const status = getMemberStatus(m.expiry_date);
         const statusMatch =
-            memberFilter === 'ALL' ? true :
-                memberFilter === 'ACTIVE' ? getMemberStatus(m.expiry_date) === 'ACTIVE' :
-                    memberFilter === 'EXPIRING' ? getMemberStatus(m.expiry_date) === 'EXPIRING' :
-                        getMemberStatus(m.expiry_date) === 'EXPIRED';
+            memberFilter === 'ALL' ? (status === 'ACTIVE' || status === 'EXPIRING') : // All active members (not expired)
+                memberFilter === 'EXPIRING' ? status === 'EXPIRING' :
+                    status === 'EXPIRED';
 
         const searchMatch =
             m.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -75,9 +92,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
 
         return transactions
             .filter(t => new Date(t.timestamp) >= cutoff)
-            .filter(t => paymentModeFilter === 'ALL' || t.payment_mode?.toUpperCase() === paymentModeFilter)
-            .reduce((sum, t) => sum + t.amount, 0);
+            .reduce((sum, t) => {
+                if (paymentModeFilter === 'ALL') {
+                    return sum + t.amount;
+                } else if (paymentModeFilter === 'CASH') {
+                    // Full Cash payments + cash portion of Split payments
+                    if (t.payment_mode === 'CASH') return sum + t.amount;
+                    if (t.payment_mode === 'SPLIT') return sum + (t.cash_amount || 0);
+                    return sum;
+                } else if (paymentModeFilter === 'UPI') {
+                    // Full UPI payments + upi portion of Split payments
+                    if (t.payment_mode === 'UPI') return sum + t.amount;
+                    if (t.payment_mode === 'SPLIT') return sum + (t.upi_amount || 0);
+                    return sum;
+                }
+                return sum;
+            }, 0);
     };
+
+    // --- Locker Revenue inclusion is implicit in calculateRevenue because it sums transactions.
+    // However, if we want separate tracking we can add it. For now, general revenue includes it.
 
     const dailyRevenue = calculateRevenue(1);
     const weeklyRevenue = calculateRevenue(7);
@@ -91,8 +125,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
         return transactions
             .filter(t => new Date(t.timestamp) >= cutoff)
             .filter(t => t.type === TransactionType.SNACK)
-            .filter(t => paymentModeFilter === 'ALL' || t.payment_mode?.toUpperCase() === paymentModeFilter)
-            .reduce((sum, t) => sum + t.amount, 0);
+            .reduce((sum, t) => {
+                if (paymentModeFilter === 'ALL') {
+                    return sum + t.amount;
+                } else if (paymentModeFilter === 'CASH') {
+                    if (t.payment_mode === 'CASH') return sum + t.amount;
+                    if (t.payment_mode === 'SPLIT') return sum + (t.cash_amount || 0);
+                    return sum;
+                } else if (paymentModeFilter === 'UPI') {
+                    if (t.payment_mode === 'UPI') return sum + t.amount;
+                    if (t.payment_mode === 'SPLIT') return sum + (t.upi_amount || 0);
+                    return sum;
+                }
+                return sum;
+            }, 0);
     };
 
     const dailySnackRevenue = calculateSnackRevenue(1);
@@ -127,28 +173,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
                 const dateKey = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                 if (data[dateKey]) {
                     data[dateKey].count++;
-                    // Find transaction for this member? We need the price. 
-                    // Ideally we should sum transactions for these members on that date if we want exact revenue.
-                    // But `joiningReportMembers` is just a list of members.
-                    // We need to look up their transaction amount.
-                    // Let's iterate transactions instead for revenue, but filtered by NEW memberships.
-                    // OR, we can just look at `transactions` that represent a membership joining.
                 }
             }
         });
 
         transactions.forEach(t => {
-            if (t.type === TransactionType.MEMBERSHIP && (paymentModeFilter === 'ALL' || t.payment_mode?.toUpperCase() === paymentModeFilter)) {
+            if (t.type === TransactionType.MEMBERSHIP || t.type === TransactionType.LOCKER) { // Include locker transactions in joining revenue
                 const d = new Date(t.timestamp);
                 const cutoff = new Date();
                 cutoff.setDate(cutoff.getDate() - days);
                 if (d >= cutoff) {
                     const dateKey = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                     if (data[dateKey]) {
-                        data[dateKey].revenue += t.amount;
-                        // We can also count specific joinings if the transaction is a joining (not renewal).
-                        // But for simplicity, let's assume Members list is the source of truth for "New Joinings" count.
-                        // Wait, `joiningReportMembers` is filtered by Payment Mode.
+                        let amountToAdd = 0;
+
+                        if (paymentModeFilter === 'ALL') {
+                            amountToAdd = t.amount;
+                        } else if (paymentModeFilter === 'CASH') {
+                            if (t.payment_mode === 'CASH') amountToAdd = t.amount;
+                            else if (t.payment_mode === 'SPLIT') amountToAdd = t.cash_amount || 0;
+                        } else if (paymentModeFilter === 'UPI') {
+                            if (t.payment_mode === 'UPI') amountToAdd = t.amount;
+                            else if (t.payment_mode === 'SPLIT') amountToAdd = t.upi_amount || 0;
+                        }
+
+                        data[dateKey].revenue += amountToAdd;
                     }
                 }
             }
@@ -200,11 +249,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
             const cutoff = new Date();
             cutoff.setDate(cutoff.getDate() - days);
 
-            if (d >= cutoff && (paymentModeFilter === 'ALL' || t.payment_mode?.toUpperCase() === paymentModeFilter)) {
+            if (d >= cutoff) {
                 const dateKey = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                 if (data[dateKey]) {
-                    if (t.type === TransactionType.SNACK) data[dateKey].snacks += t.amount;
-                    else data[dateKey].memberships += t.amount;
+                    let amountToAdd = 0;
+
+                    if (paymentModeFilter === 'ALL') {
+                        amountToAdd = t.amount;
+                    } else if (paymentModeFilter === 'CASH') {
+                        if (t.payment_mode === 'CASH') amountToAdd = t.amount;
+                        else if (t.payment_mode === 'SPLIT') amountToAdd = t.cash_amount || 0;
+                    } else if (paymentModeFilter === 'UPI') {
+                        if (t.payment_mode === 'UPI') amountToAdd = t.amount;
+                        else if (t.payment_mode === 'SPLIT') amountToAdd = t.upi_amount || 0;
+                    }
+
+                    if (amountToAdd > 0) {
+                        if (t.type === TransactionType.SNACK) data[dateKey].snacks += amountToAdd;
+                        else data[dateKey].memberships += amountToAdd; // Memberships + Cards + Lockers all go here
+                    }
                 }
             }
         });
@@ -473,7 +536,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
             `}</style>
             <div className="p-4 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex gap-3 overflow-x-auto pb-2 md:pb-0 no-scrollbar">
-                    {(['ALL', 'ACTIVE', 'EXPIRING', 'EXPIRED'] as MemberFilter[]).map(filter => (
+                    {(['ALL', 'EXPIRING', 'EXPIRED'] as MemberFilter[]).map(filter => (
                         <button
                             key={filter}
                             onClick={() => setMemberFilter(filter)}
@@ -507,13 +570,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
                             <th className="px-6 py-3">Expires On</th>
                             <th className="px-6 py-3">Plan / Hours</th>
                             <th className="px-6 py-3">Registered By</th>
+                            <th className="px-6 py-3">Card</th>
+                            {memberFilter !== 'EXPIRED' && <th className="px-6 py-3">Locker</th>}
                             <th className="px-6 py-3">Status</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                         {filteredMembers.length === 0 ? (
                             <tr>
-                                <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
+                                <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
                                     No members found matching filters.
                                 </td>
                             </tr>
@@ -544,6 +609,121 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
                                         <td className="px-6 py-4 text-sm text-slate-600">
                                             {m.registered_by}
                                         </td>
+                                        {/* Card Column */}
+                                        <td className="px-6 py-4">
+                                            {status === 'EXPIRED' ? (
+                                                // Expired members: show Returned/Not Returned
+                                                m.card_issued ? (
+                                                    m.card_returned ? (
+                                                        <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
+                                                            Returned
+                                                        </span>
+                                                    ) : (
+                                                        !readOnly && onReturnCard ? (
+                                                            <button
+                                                                onClick={() => onReturnCard(m.id)}
+                                                                className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded hover:bg-amber-200 transition-colors"
+                                                            >
+                                                                Mark Returned
+                                                            </button>
+                                                        ) : (
+                                                            <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded">
+                                                                Not Returned
+                                                            </span>
+                                                        )
+                                                    )
+                                                ) : (
+                                                    <span className="text-slate-400 text-xs">{readOnly ? 'Not Issued' : 'N/A'}</span>
+                                                )
+                                            ) : (
+                                                // Active/Expiring members: show Issued or Issue option
+                                                m.card_issued ? (
+                                                    <span className="px-2 py-1 bg-violet-100 text-violet-700 text-xs font-medium rounded flex items-center gap-1 inline-flex">
+                                                        <CreditCard size={12} />
+                                                        Issued
+                                                    </span>
+                                                ) : (
+                                                    !readOnly && onIssueCard ? (
+                                                        cardIssuePopup === m.id ? (
+                                                            <div className="flex gap-1">
+                                                                <button
+                                                                    onClick={() => { onIssueCard(m.id, 'CASH'); setCardIssuePopup(null); }}
+                                                                    className="px-2 py-1 bg-green-500 text-white text-xs font-medium rounded hover:bg-green-600"
+                                                                >
+                                                                    Cash
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => { onIssueCard(m.id, 'UPI'); setCardIssuePopup(null); }}
+                                                                    className="px-2 py-1 bg-blue-500 text-white text-xs font-medium rounded hover:bg-blue-600"
+                                                                >
+                                                                    UPI
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setCardIssuePopup(null)}
+                                                                    className="px-1 text-slate-400 hover:text-slate-600"
+                                                                >
+                                                                    ✕
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => setCardIssuePopup(m.id)}
+                                                                className="px-2 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded hover:bg-slate-200 transition-colors"
+                                                            >
+                                                                Issue Card
+                                                            </button>
+                                                        )
+                                                    ) : (
+                                                        <span className="text-slate-400 text-xs">{readOnly ? 'Not Issued' : 'No Card'}</span>
+                                                    )
+                                                )
+                                            )}
+                                        </td>
+                                        {/* Locker Column */}
+                                        {memberFilter !== 'EXPIRED' && (
+                                            <td className="px-6 py-4">
+                                                {m.locker_assigned ? (
+                                                    <span className="px-2 py-1 bg-pink-100 text-pink-700 text-xs font-medium rounded flex items-center gap-1 inline-flex">
+                                                        <span role="img" aria-label="locker">🔒</span>
+                                                        Assigned
+                                                    </span>
+                                                ) : (
+                                                    !readOnly && onAssignLocker ? (
+                                                        lockerAssignPopup === m.id ? (
+                                                            <div className="flex gap-1">
+                                                                <button
+                                                                    onClick={() => { onAssignLocker(m.id, 'CASH'); setLockerAssignPopup(null); }}
+                                                                    className="px-2 py-1 bg-green-500 text-white text-xs font-medium rounded hover:bg-green-600"
+                                                                >
+                                                                    Cash
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => { onAssignLocker(m.id, 'UPI'); setLockerAssignPopup(null); }}
+                                                                    className="px-2 py-1 bg-blue-500 text-white text-xs font-medium rounded hover:bg-blue-600"
+                                                                >
+                                                                    UPI
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setLockerAssignPopup(null)}
+                                                                    className="px-1 text-slate-400 hover:text-slate-600"
+                                                                >
+                                                                    ✕
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => setLockerAssignPopup(m.id)}
+                                                                className="px-2 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded hover:bg-slate-200 transition-colors"
+                                                            >
+                                                                Assign
+                                                            </button>
+                                                        )
+                                                    ) : (
+                                                        <span className="text-slate-400 text-xs">{readOnly ? 'Not Assigned' : ''}</span>
+                                                    )
+                                                )}
+                                            </td>
+                                        )}
                                         <td className="px-6 py-4">
                                             <span className={`inline - flex items - center px - 2.5 py - 0.5 rounded - full text - xs font - medium ${statusClasses} `}>
                                                 {status}
@@ -603,6 +783,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
                 >
                     Members & Expiry
                 </button>
+                <button
+                    onClick={() => setView('CARDS')}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${view === 'CARDS' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                    Card Stats
+                </button>
+                <button
+                    onClick={() => setView('LOCKERS')}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${view === 'LOCKERS' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                    Locker Stats
+                </button>
             </div>
 
             <div className="animate-fade-in">
@@ -610,6 +802,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
                 {view === 'SNACKS' && renderSnackSales()}
                 {view === 'JOINING' && renderJoining()}
                 {view === 'MEMBERS' && renderMembers()}
+                {view === 'CARDS' && (
+                    <CardManagement
+                        members={members}
+                        branch={branch || null}
+                        onBranchUpdate={() => { }}
+                        readOnly={readOnly}
+                    />
+                )}
+                {view === 'LOCKERS' && (
+                    <LockerManagement
+                        members={members}
+                        branch={branch || null}
+                        onBranchUpdate={() => { }}
+                        readOnly={readOnly}
+                    />
+                )}
             </div>
         </div>
     );

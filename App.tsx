@@ -6,6 +6,8 @@ import { SnackShop } from './components/SnackShop';
 import { SnackManager } from './components/SnackManager';
 import { Dashboard } from './components/Dashboard';
 import { AdminView, AdminBranchCreation, ReceptionistList } from './components/AdminView';
+import { CardManagement } from './components/CardManagement';
+import { LockerManagement } from './components/LockerManagement';
 import { MOCK_BRANCHES } from './constants';
 import { AppState, Member, Transaction, TransactionType, Branch, Profile } from './types';
 import { Menu, LogOut, Loader2, Eye, EyeOff } from 'lucide-react';
@@ -442,7 +444,17 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
   const currentBranch = appState.branches.find(b => b.id === profile?.branch_id);
 
   // --- Handlers ---
-  const handleMemberRegistration = async (member: Member, amount: number, paymentMode: 'CASH' | 'UPI') => {
+  const handleMemberRegistration = async (
+    member: Member,
+    amount: number,
+    paymentMode: 'CASH' | 'UPI' | 'SPLIT',
+    cashAmount?: number,
+    upiAmount?: number,
+    cardIssued?: boolean,
+    cardPaymentMode?: 'CASH' | 'UPI',
+    lockerAssigned?: boolean,
+    lockerPaymentMode?: 'CASH' | 'UPI' | 'INCLUDED'
+  ) => {
     if (!profile?.branch_id) return;
 
     // Insert or Update Member (Upsert)
@@ -460,7 +472,12 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
         daily_access_hours: member.daily_access_hours,
         study_purpose: member.study_purpose,
         registered_by: member.registered_by,
-        branch_id: profile.branch_id
+        branch_id: profile.branch_id,
+        card_issued: cardIssued || false,
+        card_payment_mode: cardIssued ? cardPaymentMode : null,
+        card_returned: false,
+        locker_assigned: lockerAssigned || false,
+        locker_payment_mode: lockerAssigned ? lockerPaymentMode : null
       })
       .select()
       .single();
@@ -470,16 +487,133 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
       return;
     }
 
-    // Insert Transaction
+    // Build transaction data with optional split payment fields
+    const transactionData: any = {
+      type: TransactionType.MEMBERSHIP,
+      amount,
+      description: `New Membership (${member.subscription_plan} - ${member.daily_access_hours}) - ${member.full_name}`,
+      branch_id: profile.branch_id,
+      member_id: newMember.id,
+      status: 'COMPLETED',
+      payment_mode: paymentMode
+    };
+
+    // Add split payment amounts if applicable
+    if (paymentMode === 'SPLIT' && cashAmount !== undefined && upiAmount !== undefined) {
+      transactionData.cash_amount = cashAmount;
+      transactionData.upi_amount = upiAmount;
+    }
+
+    // Insert Membership Transaction
     try {
       const { data: newTx, error: txError } = await supabase
         .from('transactions')
-        .insert({
-          type: TransactionType.MEMBERSHIP,
-          amount,
-          description: `New Membership (${member.subscription_plan} - ${member.daily_access_hours}) - ${member.full_name}`,
+        .insert(transactionData)
+        .select()
+        .single();
+
+      if (txError) throw txError;
+
+      let allNewTransactions = [newTx];
+
+      // If card is issued, create a separate card transaction
+      if (cardIssued && cardPaymentMode) {
+        const cardTxData = {
+          type: TransactionType.CARD,
+          amount: 100, // Fixed card price
+          description: `Library Card Issued - ${member.full_name}`,
           branch_id: profile.branch_id,
           member_id: newMember.id,
+          status: 'COMPLETED',
+          payment_mode: cardPaymentMode
+        };
+
+        const { data: cardTx, error: cardTxError } = await supabase
+          .from('transactions')
+          .insert(cardTxData)
+          .select()
+          .single();
+
+        if (cardTxError) {
+          console.error("Error creating card transaction:", cardTxError);
+          // Don't fail the whole registration, just log the error
+        } else if (cardTx) {
+          allNewTransactions.push(cardTx);
+        }
+      }
+
+      // If locker is assigned and not free, create locker transaction
+      if (lockerAssigned && lockerPaymentMode !== 'INCLUDED' && lockerPaymentMode) {
+        const lockerTxData = {
+          type: TransactionType.LOCKER,
+          amount: 200, // Fixed locker price
+          description: `Locker Assigned - ${member.full_name}`,
+          branch_id: profile.branch_id,
+          member_id: newMember.id,
+          status: 'COMPLETED',
+          payment_mode: lockerPaymentMode
+        };
+
+        const { data: lockerTx, error: lockerTxError } = await supabase
+          .from('transactions')
+          .insert(lockerTxData)
+          .select()
+          .single();
+
+        if (lockerTxError) {
+          console.error("Error creating locker transaction:", lockerTxError);
+        } else if (lockerTx) {
+          allNewTransactions.push(lockerTx);
+        }
+      }
+
+      // Update Local State (Optimistic or Re-fetch)
+      if (newMember) {
+        setAppState(prev => ({
+          ...prev,
+          members: [...prev.members.filter(m => m.id !== newMember.id), newMember], // Remove existing if present (update case)
+          transactions: [...prev.transactions, ...allNewTransactions]
+        }));
+      }
+      setActiveTab('dashboard');
+    } catch (err: any) {
+      console.error("Error creating transaction (Rollback initiated):", err);
+      // ROLLBACK: Delete the member we just created because payment failed
+      await supabase.from('members').delete().eq('id', newMember.id);
+      alert(`Registration Failed: ${err?.message || 'Payment record could not be saved. Please try again.'}`);
+    }
+  };
+
+  const handleRenewMember = async (member: Member) => {
+    setRenewingMember(member);
+    setActiveTab('register');
+  };
+
+  // Issue card to an existing member (from Dashboard)
+  const handleIssueCard = async (memberId: string, paymentMode: 'CASH' | 'UPI') => {
+    if (!profile?.branch_id) return;
+
+    const member = appState.members.find(m => m.id === memberId);
+    if (!member) return;
+
+    try {
+      // Update member with card_issued = true
+      const { error: memberError } = await supabase
+        .from('members')
+        .update({ card_issued: true, card_payment_mode: paymentMode })
+        .eq('id', memberId);
+
+      if (memberError) throw memberError;
+
+      // Create card transaction
+      const { data: cardTx, error: txError } = await supabase
+        .from('transactions')
+        .insert({
+          type: TransactionType.CARD,
+          amount: 100,
+          description: `Library Card Issued - ${member.full_name}`,
+          branch_id: profile.branch_id,
+          member_id: memberId,
           status: 'COMPLETED',
           payment_mode: paymentMode
         })
@@ -488,26 +622,114 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
 
       if (txError) throw txError;
 
-      // Update Local State (Optimistic or Re-fetch)
-      if (newMember && newTx) {
-        setAppState(prev => ({
-          ...prev,
-          members: [...prev.members.filter(m => m.id !== newMember.id), newMember], // Remove existing if present (update case)
-          transactions: [...prev.transactions, newTx]
-        }));
-      }
-      setActiveTab('dashboard');
-    } catch (err) {
-      console.error("Error creating transaction (Rollback initiated):", err);
-      // ROLLBACK: Delete the member we just created because payment failed
-      await supabase.from('members').delete().eq('id', newMember.id);
-      alert("Registration Failed: Payment record could not be saved. Please try again.");
+      // Update local state
+      setAppState(prev => ({
+        ...prev,
+        members: prev.members.map(m =>
+          m.id === memberId ? { ...m, card_issued: true, card_payment_mode: paymentMode } : m
+        ),
+        transactions: cardTx ? [...prev.transactions, cardTx] : prev.transactions
+      }));
+    } catch (err: any) {
+      console.error("Error issuing card:", err);
+      alert(`Failed to issue card: ${err.message}`);
     }
   };
 
-  const handleRenewMember = async (member: Member) => {
-    setRenewingMember(member);
-    setActiveTab('register');
+  // Return card for an expired member (refund ₹100)
+  const handleReturnCard = async (memberId: string) => {
+    if (!profile?.branch_id) return;
+
+    const member = appState.members.find(m => m.id === memberId);
+    if (!member || !member.card_payment_mode) return;
+
+    try {
+      // Update member with card_returned = true
+      const { error: memberError } = await supabase
+        .from('members')
+        .update({ card_returned: true })
+        .eq('id', memberId);
+
+      if (memberError) throw memberError;
+
+      // Create refund transaction (negative amount)
+      const { data: refundTx, error: txError } = await supabase
+        .from('transactions')
+        .insert({
+          type: TransactionType.CARD,
+          amount: -100, // Negative for refund
+          description: `Library Card Returned (Refund) - ${member.full_name}`,
+          branch_id: profile.branch_id,
+          member_id: memberId,
+          status: 'COMPLETED',
+          payment_mode: member.card_payment_mode // Use original payment mode for refund
+        })
+        .select()
+        .single();
+
+      if (txError) throw txError;
+
+      // Update local state
+      setAppState(prev => ({
+        ...prev,
+        members: prev.members.map(m =>
+          m.id === memberId ? { ...m, card_returned: true } : m
+        ),
+        transactions: refundTx ? [...prev.transactions, refundTx] : prev.transactions
+      }));
+    } catch (err: any) {
+      console.error("Error returning card:", err);
+      alert(`Failed to process card return: ${err.message}`);
+    }
+  };
+
+  // Assign locker to existing member
+  const handleAssignLocker = async (memberId: string, paymentMode: 'CASH' | 'UPI' | 'INCLUDED') => {
+    if (!profile?.branch_id) return;
+
+    const member = appState.members.find(m => m.id === memberId);
+    if (!member) return;
+
+    try {
+      const { error: memberError } = await supabase
+        .from('members')
+        .update({ locker_assigned: true, locker_payment_mode: paymentMode })
+        .eq('id', memberId);
+
+      if (memberError) throw memberError;
+
+      // Create transaction if not included/free
+      let newTx = null;
+      if (paymentMode !== 'INCLUDED') {
+        const { data: lockerTx, error: txError } = await supabase
+          .from('transactions')
+          .insert({
+            type: TransactionType.LOCKER,
+            amount: 200,
+            description: `Locker Assigned - ${member.full_name}`,
+            branch_id: profile.branch_id,
+            member_id: memberId,
+            status: 'COMPLETED',
+            payment_mode: paymentMode
+          })
+          .select()
+          .single();
+
+        if (txError) throw txError;
+        newTx = lockerTx;
+      }
+
+      setAppState(prev => ({
+        ...prev,
+        members: prev.members.map(m =>
+          m.id === memberId ? { ...m, locker_assigned: true, locker_payment_mode: paymentMode } : m
+        ),
+        transactions: newTx ? [...prev.transactions, newTx] : prev.transactions
+      }));
+    } catch (err: any) {
+      console.error("Error assigning locker:", err);
+      alert(`Failed to assign locker: ${err.message}`);
+    }
   };
 
   const handleSnackSale = async (amount: number, description: string, paymentMode: 'CASH' | 'UPI') => {
@@ -612,6 +834,7 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
       if (adminViewBranchId) {
         const targetBranchMembers = appState.members.filter(m => m.branch_id === adminViewBranchId);
         const targetBranchTransactions = appState.transactions.filter(t => t.branch_id === adminViewBranchId);
+        const targetBranch = appState.branches.find(b => b.id === adminViewBranchId);
 
         return (
           <Dashboard
@@ -620,6 +843,7 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
             onRenew={() => { }}
             onBack={() => setAdminViewBranchId(null)}
             readOnly={true}
+            branch={targetBranch}
           />
         );
       }
@@ -631,25 +855,94 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
     const branchMembers = appState.members.filter(m => m.branch_id === profile.branch_id);
     const branchTransactions = appState.transactions.filter(t => t.branch_id === profile.branch_id);
 
+    // Calculate cards available for this branch
+    const today = new Date();
+    const threeDaysFromNow = new Date(today);
+    threeDaysFromNow.setDate(today.getDate() + 3);
+
+    const getMemberStatus = (expiryDateStr: string) => {
+      const expiry = new Date(expiryDateStr);
+      if (expiry < today) return 'EXPIRED';
+      if (expiry <= threeDaysFromNow) return 'EXPIRING';
+      return 'ACTIVE';
+    };
+
+    const totalCards = currentBranch?.total_cards || 0;
+    const cardsInCirculation = branchMembers.filter(m => {
+      const status = getMemberStatus(m.expiry_date);
+      return m.card_issued && (status === 'ACTIVE' || status === 'EXPIRING');
+    }).length;
+    const cardsNotReturned = branchMembers.filter(m => {
+      const status = getMemberStatus(m.expiry_date);
+      return m.card_issued && status === 'EXPIRED' && !m.card_returned;
+    }).length;
+    const cardsAvailable = Math.max(0, totalCards - cardsInCirculation - cardsNotReturned);
+
+    // Calculate lockers available
+    const totalLockers = Number(currentBranch?.total_lockers) || 0;
+    const lockersInUse = branchMembers.filter(m => {
+      const status = getMemberStatus(m.expiry_date);
+      // Locker is freed when expired, so only count Active/Expiring
+      return m.locker_assigned && (status === 'ACTIVE' || status === 'EXPIRING');
+    }).length;
+    const lockersAvailable = Math.max(0, totalLockers - lockersInUse);
+
+    // Handler for branch updates (e.g., total_cards)
+    const handleBranchUpdate = (updatedBranch: Branch) => {
+      setAppState(prev => ({
+        ...prev,
+        branches: prev.branches.map(b => b.id === updatedBranch.id ? updatedBranch : b)
+      }));
+    };
+
     switch (activeTab) {
       case 'register':
         return (
           <MemberRegistration
             branchId={profile.branch_id || ''}
             branchName={currentBranch?.name || ''}
-            onRegister={(m, a, p) => {
-              handleMemberRegistration(m, a, p);
+            onRegister={(m, a, p, cashAmt, upiAmt, cardIssued, cardPaymentMode, lockerAssigned, lockerPaymentMode) => {
+              handleMemberRegistration(m, a, p, cashAmt, upiAmt, cardIssued, cardPaymentMode, lockerAssigned, lockerPaymentMode);
               setRenewingMember(null);
             }}
             initialData={renewingMember}
+            cardsAvailable={cardsAvailable}
+            lockersAvailable={lockersAvailable}
           />
         );
       case 'snacks':
         return <SnackShop onSale={handleSnackSale} />;
+      case 'cards':
+        return (
+          <CardManagement
+            members={branchMembers}
+            branch={currentBranch || null}
+            onBranchUpdate={handleBranchUpdate}
+          />
+        );
 
+      case 'lockers':
+        return (
+          <LockerManagement
+            members={branchMembers}
+            branch={currentBranch || null}
+            onBranchUpdate={handleBranchUpdate}
+          />
+        );
       case 'dashboard':
       default:
-        return <Dashboard members={branchMembers} transactions={branchTransactions} onRenew={handleRenewMember} />;
+        return (
+          <div>
+            <Dashboard
+              members={branchMembers}
+              transactions={branchTransactions}
+              onRenew={handleRenewMember}
+              onIssueCard={handleIssueCard}
+              onReturnCard={handleReturnCard}
+              onAssignLocker={handleAssignLocker}
+            />
+          </div>
+        );
     }
   };
 

@@ -9,11 +9,21 @@ import { supabase } from '../supabaseClient';
 interface MemberRegistrationProps {
   branchId: string;
   branchName: string;
-  onRegister: (member: Member, amount: number, paymentMode: 'CASH' | 'UPI') => void;
+  onRegister: (
+    member: Member,
+    amount: number,
+    paymentMode: 'CASH' | 'UPI' | 'SPLIT',
+    cashAmount?: number,
+    upiAmount?: number,
+    cardIssued?: boolean,
+    cardPaymentMode?: 'CASH' | 'UPI'
+  ) => void;
   initialData?: Member | null;
+  cardsAvailable?: number;
+  lockersAvailable?: number;
 }
 
-export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId, branchName, onRegister, initialData }) => {
+export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId, branchName, onRegister, initialData, cardsAvailable = 0, lockersAvailable = 0 }) => {
   const [formData, setFormData] = useState({
     fullName: initialData?.full_name || '',
     address: initialData?.address || '',
@@ -21,12 +31,19 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
     email: initialData?.email || '',
     subscriptionPlan: SubscriptionPlan.MONTH_1,
     dailyAccessHours: AccessHours.HOURS_6,
+    customAccessHours: '', // For custom hours input
     studyPurpose: initialData?.study_purpose || '',
     registeredBy: initialData?.registered_by || '',
     price: '', // Decoupled Price
     customDurationValue: '',
     customDurationUnit: 'DAYS' as 'DAYS' | 'MONTHS',
-    paymentMode: 'CASH' as 'CASH' | 'UPI'
+    paymentMode: 'CASH' as 'CASH' | 'UPI' | 'SPLIT',
+    cashAmount: '', // For split payments
+    upiAmount: '',  // For split payments
+    cardIssued: false, // Card feature
+    cardPaymentMode: 'CASH' as 'CASH' | 'UPI', // Card payment method
+    lockerAssigned: false,
+    lockerPaymentMode: 'CASH' as 'CASH' | 'UPI' | 'INCLUDED'
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -45,8 +62,15 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
         registeredBy: initialData.registered_by,
         subscriptionPlan: SubscriptionPlan.MONTH_1,
         dailyAccessHours: AccessHours.HOURS_6,
+        customAccessHours: '',
         price: '',
-        paymentMode: 'CASH'
+        paymentMode: 'CASH',
+        cashAmount: '',
+        upiAmount: '',
+        cardIssued: false,
+        cardPaymentMode: 'CASH',
+        lockerAssigned: false,
+        lockerPaymentMode: 'CASH'
       }));
     }
   }, [initialData]);
@@ -72,6 +96,26 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
 
     if (formData.subscriptionPlan === SubscriptionPlan.CUSTOM) {
       if (!formData.customDurationValue || Number(formData.customDurationValue) <= 0) newErrors.customDuration = "Duration required.";
+    }
+
+    // Validate custom access hours
+    if (formData.dailyAccessHours === AccessHours.CUSTOM) {
+      if (!formData.customAccessHours || Number(formData.customAccessHours) <= 0 || Number(formData.customAccessHours) > 24) {
+        newErrors.customAccessHours = "Enter valid hours (1-24).";
+      }
+    }
+
+    // Validate split payment amounts
+    if (formData.paymentMode === 'SPLIT') {
+      const cashAmt = Number(formData.cashAmount) || 0;
+      const upiAmt = Number(formData.upiAmount) || 0;
+      const totalPrice = Number(formData.price) || 0;
+
+      if (cashAmt <= 0 && upiAmt <= 0) {
+        newErrors.splitPayment = "Enter at least one payment amount.";
+      } else if (cashAmt + upiAmt !== totalPrice) {
+        newErrors.splitPayment = `Split amounts (₹${cashAmt + upiAmt}) must equal total (₹${totalPrice}).`;
+      }
     }
 
     setErrors(newErrors);
@@ -143,7 +187,10 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
         ? `Custom (${formData.customDurationValue} ${formData.customDurationUnit})`
         : formData.subscriptionPlan;
 
-
+      // Determine the daily access hours label
+      const accessHoursLabel = formData.dailyAccessHours === AccessHours.CUSTOM
+        ? `${formData.customAccessHours} Hours`
+        : formData.dailyAccessHours;
 
       const expiryDate = calculateExpiryDate();
 
@@ -156,17 +203,34 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
         join_date: initialData?.join_date || new Date().toISOString(),
         expiry_date: expiryDate,
         subscription_plan: planLabel,
-        daily_access_hours: formData.dailyAccessHours,
+        daily_access_hours: accessHoursLabel,
         study_purpose: formData.studyPurpose,
         registered_by: formData.registeredBy,
-        branch_id: branchId
+        branch_id: branchId,
+        card_issued: formData.cardIssued,
+        card_payment_mode: formData.cardIssued ? formData.cardPaymentMode : undefined,
+        card_returned: false,
+        locker_assigned: formData.lockerAssigned,
+        locker_payment_mode: formData.lockerAssigned ? formData.lockerPaymentMode : undefined
       };
 
       const amount = Number(formData.price);
+      const cashAmt = formData.paymentMode === 'SPLIT' ? Number(formData.cashAmount) || 0 : undefined;
+      const upiAmt = formData.paymentMode === 'SPLIT' ? Number(formData.upiAmount) || 0 : undefined;
 
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      onRegister(newMember, amount, formData.paymentMode);
+      onRegister(
+        newMember,
+        amount,
+        formData.paymentMode,
+        cashAmt,
+        upiAmt,
+        formData.cardIssued,
+        formData.cardIssued ? formData.cardPaymentMode : undefined,
+        formData.lockerAssigned,
+        formData.lockerAssigned ? formData.lockerPaymentMode : undefined
+      );
 
       // Reset Form
       setFormData({
@@ -176,12 +240,19 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
         email: '',
         subscriptionPlan: SubscriptionPlan.MONTH_1,
         dailyAccessHours: AccessHours.HOURS_6,
+        customAccessHours: '',
         studyPurpose: '',
         registeredBy: '',
         price: '',
         customDurationValue: '',
         customDurationUnit: 'DAYS',
-        paymentMode: 'CASH'
+        paymentMode: 'CASH',
+        cashAmount: '',
+        upiAmount: '',
+        cardIssued: false,
+        cardPaymentMode: 'CASH',
+        lockerAssigned: false,
+        lockerPaymentMode: 'CASH'
       });
       setErrors({});
       setShowSuccess(true);
@@ -323,6 +394,29 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
               </select>
             </div>
 
+            {/* Custom Access Hours Input */}
+            {formData.dailyAccessHours === AccessHours.CUSTOM && (
+              <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                <label htmlFor="custom-access-hours" className="block text-sm font-medium text-slate-700 mb-1">Custom Hours (1-24) *</label>
+                <input
+                  id="custom-access-hours"
+                  name="customAccessHours"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={formData.customAccessHours}
+                  onChange={(e) => {
+                    if (/^\d*$/.test(e.target.value)) {
+                      setFormData({ ...formData, customAccessHours: e.target.value });
+                    }
+                  }}
+                  className={`w-full px-3 py-2 rounded-lg border ${errors.customAccessHours ? 'border-red-500' : 'border-slate-300'} focus:ring-2 focus:ring-indigo-200 focus:outline-none`}
+                  placeholder="e.g. 8"
+                />
+                {errors.customAccessHours && <p className="text-red-500 text-xs mt-1">{errors.customAccessHours}</p>}
+              </div>
+            )}
+
             {formData.subscriptionPlan === SubscriptionPlan.CUSTOM && (
               <div className="md:col-span-2 grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
                 <div>
@@ -330,9 +424,15 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
                   <input
                     id="custom-duration-value"
                     name="customDurationValue"
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={formData.customDurationValue}
-                    onChange={(e) => setFormData({ ...formData, customDurationValue: e.target.value })}
+                    onChange={(e) => {
+                      if (/^\d*$/.test(e.target.value)) {
+                        setFormData({ ...formData, customDurationValue: e.target.value });
+                      }
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-200 focus:outline-none"
                     placeholder="e.g. 45"
                   />
@@ -359,9 +459,15 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
               <input
                 id="price"
                 name="price"
-                type="number"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                onChange={(e) => {
+                  if (/^\d*$/.test(e.target.value)) {
+                    setFormData({ ...formData, price: e.target.value });
+                  }
+                }}
                 className={`w-full px-3 py-2 rounded-lg border ${errors.price ? 'border-red-500' : 'border-slate-300'} focus:ring-2 focus:ring-indigo-200 focus:outline-none font-bold text-slate-700`}
                 placeholder="Enter amount"
               />
@@ -373,7 +479,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
               <div className="flex bg-slate-100 p-1 rounded-lg mt-0.5 inline-flex">
                 <button
                   type="button"
-                  onClick={() => setFormData({ ...formData, paymentMode: 'CASH' })}
+                  onClick={() => setFormData({ ...formData, paymentMode: 'CASH', cashAmount: '', upiAmount: '' })}
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${formData.paymentMode === 'CASH'
                     ? 'bg-indigo-600 text-white shadow-md'
                     : 'text-slate-600 hover:bg-slate-200'
@@ -383,7 +489,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFormData({ ...formData, paymentMode: 'UPI' })}
+                  onClick={() => setFormData({ ...formData, paymentMode: 'UPI', cashAmount: '', upiAmount: '' })}
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${formData.paymentMode === 'UPI'
                     ? 'bg-indigo-600 text-white shadow-md'
                     : 'text-slate-600 hover:bg-slate-200'
@@ -391,6 +497,206 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
                 >
                   UPI
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, paymentMode: 'SPLIT' })}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${formData.paymentMode === 'SPLIT'
+                    ? 'bg-emerald-600 text-white shadow-md'
+                    : 'text-slate-600 hover:bg-slate-200'
+                    }`}
+                >
+                  Split
+                </button>
+              </div>
+            </div>
+
+            {/* Split Payment Fields */}
+            {formData.paymentMode === 'SPLIT' && (
+              <div className="md:col-span-2 grid grid-cols-2 gap-4 bg-emerald-50 p-4 rounded-lg border border-emerald-200">
+                <div>
+                  <label htmlFor="cash-amount" className="block text-sm font-medium text-slate-700 mb-1">Cash Amount (₹) *</label>
+                  <input
+                    id="cash-amount"
+                    name="cashAmount"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={formData.cashAmount}
+                    onChange={(e) => {
+                      if (/^\d*$/.test(e.target.value)) {
+                        setFormData({ ...formData, cashAmount: e.target.value });
+                      }
+                    }}
+                    className={`w-full px-3 py-2 rounded-lg border ${errors.splitPayment ? 'border-red-500' : 'border-slate-300'} focus:ring-2 focus:ring-emerald-200 focus:outline-none font-semibold text-slate-700`}
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="upi-amount" className="block text-sm font-medium text-slate-700 mb-1">UPI Amount (₹) *</label>
+                  <input
+                    id="upi-amount"
+                    name="upiAmount"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={formData.upiAmount}
+                    onChange={(e) => {
+                      if (/^\d*$/.test(e.target.value)) {
+                        setFormData({ ...formData, upiAmount: e.target.value });
+                      }
+                    }}
+                    className={`w-full px-3 py-2 rounded-lg border ${errors.splitPayment ? 'border-red-500' : 'border-slate-300'} focus:ring-2 focus:ring-emerald-200 focus:outline-none font-semibold text-slate-700`}
+                    placeholder="0"
+                  />
+                </div>
+                {errors.splitPayment && (
+                  <div className="col-span-2">
+                    <p className="text-red-500 text-xs">{errors.splitPayment}</p>
+                  </div>
+                )}
+                <div className="col-span-2 text-xs text-slate-500 italic">
+                  Total: ₹{(Number(formData.cashAmount) || 0) + (Number(formData.upiAmount) || 0)} / ₹{formData.price || 0}
+                </div>
+              </div>
+            )}
+
+            {/* Card Issued Section */}
+            <div className="md:col-span-2 bg-violet-50 p-4 rounded-lg border border-violet-200">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <label className="block text-sm font-medium text-violet-800">Issue Library Card?</label>
+                  <p className="text-xs text-violet-600">₹100 per card • {cardsAvailable} cards available</p>
+                </div>
+                <div className="flex bg-white p-1 rounded-lg border border-violet-200">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, cardIssued: false })}
+                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${!formData.cardIssued
+                      ? 'bg-violet-600 text-white shadow-md'
+                      : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                  >
+                    No
+                  </button>
+                  <button
+                    type="button"
+                    disabled={cardsAvailable <= 0}
+                    onClick={() => setFormData({ ...formData, cardIssued: true })}
+                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${formData.cardIssued
+                      ? 'bg-violet-600 text-white shadow-md'
+                      : 'text-slate-600 hover:bg-slate-100'
+                      } ${cardsAvailable <= 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    Yes
+                  </button>
+                </div>
+              </div>
+
+              {/* Card Payment Method */}
+              {formData.cardIssued && (
+                <div className="mt-3 pt-3 border-t border-violet-200">
+                  <label className="block text-sm font-medium text-violet-800 mb-2">Card Payment Method</label>
+                  <div className="flex bg-white p-1 rounded-lg border border-violet-200 inline-flex">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, cardPaymentMode: 'CASH' })}
+                      className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${formData.cardPaymentMode === 'CASH'
+                        ? 'bg-green-600 text-white shadow-md'
+                        : 'text-slate-600 hover:bg-slate-100'
+                        }`}
+                    >
+                      Cash
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, cardPaymentMode: 'UPI' })}
+                      className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${formData.cardPaymentMode === 'UPI'
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'text-slate-600 hover:bg-slate-100'
+                        }`}
+                    >
+                      UPI
+                    </button>
+                  </div>
+                  <p className="text-xs text-violet-600 mt-2">Card fee: ₹100 will be added to total</p>
+                </div>
+              )}
+              {/* Locker Assigned Section */}
+              <div className="md:col-span-2 bg-pink-50 p-4 rounded-lg border border-pink-200 mt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <label className="block text-sm font-medium text-pink-800">Assign Locker?</label>
+                    <p className="text-xs text-pink-600">₹200 per locker • {lockersAvailable} lockers available</p>
+                    {formData.dailyAccessHours === AccessHours.HOURS_24 && (
+                      <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded ml-2">FREE with 24 Hours Plan</span>
+                    )}
+                  </div>
+                  <div className="flex bg-white p-1 rounded-lg border border-pink-200">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, lockerAssigned: false })}
+                      className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${!formData.lockerAssigned
+                        ? 'bg-pink-600 text-white shadow-md'
+                        : 'text-slate-600 hover:bg-slate-100'
+                        }`}
+                    >
+                      No
+                    </button>
+                    <button
+                      type="button"
+                      disabled={lockersAvailable <= 0}
+                      onClick={() => {
+                        const isFree = formData.dailyAccessHours === AccessHours.HOURS_24;
+                        setFormData({
+                          ...formData,
+                          lockerAssigned: true,
+                          lockerPaymentMode: isFree ? 'INCLUDED' : 'CASH'
+                        });
+                      }}
+                      className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${formData.lockerAssigned
+                        ? 'bg-pink-600 text-white shadow-md'
+                        : 'text-slate-600 hover:bg-slate-100'
+                        } ${lockersAvailable <= 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      Yes
+                    </button>
+                  </div>
+                </div>
+
+                {/* Locker Payment Method */}
+                {formData.lockerAssigned && formData.dailyAccessHours !== AccessHours.HOURS_24 && (
+                  <div className="mt-3 pt-3 border-t border-pink-200">
+                    <label className="block text-sm font-medium text-pink-800 mb-2">Locker Payment Method</label>
+                    <div className="flex bg-white p-1 rounded-lg border border-pink-200 inline-flex">
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, lockerPaymentMode: 'CASH' })}
+                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${formData.lockerPaymentMode === 'CASH'
+                          ? 'bg-green-600 text-white shadow-md'
+                          : 'text-slate-600 hover:bg-slate-100'
+                          }`}
+                      >
+                        Cash
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, lockerPaymentMode: 'UPI' })}
+                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${formData.lockerPaymentMode === 'UPI'
+                          ? 'bg-blue-600 text-white shadow-md'
+                          : 'text-slate-600 hover:bg-slate-100'
+                          }`}
+                      >
+                        UPI
+                      </button>
+                    </div>
+                    <p className="text-xs text-pink-600 mt-2">Locker fee: ₹200 will be added to total</p>
+                  </div>
+                )}
+                {formData.lockerAssigned && formData.dailyAccessHours === AccessHours.HOURS_24 && (
+                  <div className="mt-3 pt-3 border-t border-pink-200">
+                    <p className="text-sm font-bold text-green-700">Locker included for free with 24 Hours access.</p>
+                  </div>
+                )}
               </div>
             </div>
 
