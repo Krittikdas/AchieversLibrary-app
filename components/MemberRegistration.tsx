@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { CheckCircle, Loader2, AlertCircle } from 'lucide-react';
 import { SubscriptionPlan, AccessHours, Member } from '../types';
 import { SUBSCRIPTION_PRICES } from '../constants';
-import { generateWelcomeEmail } from '../services/geminiService';
+
 import { supabase } from '../supabaseClient';
 
 interface MemberRegistrationProps {

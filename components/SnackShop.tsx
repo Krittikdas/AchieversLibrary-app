@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ShoppingCart, Plus, Minus, Trash2, Save, Loader2, CheckCircle } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { Snack } from '../types';
-import { generateReceiptSummary } from '../services/geminiService';
+
 
 interface SnackShopProps {
   onSale: (amount: number, description: string, paymentMode: 'CASH' | 'UPI') => void;
@@ -59,7 +59,6 @@ export const SnackShop: React.FC<SnackShopProps> = ({ onSale }) => {
 
     // Simulate AI Receipt/Processing
     // Even if we don't generate a QR code, we might still want to log/generate a summary internally or via AI
-    await generateReceiptSummary(itemNames, total);
 
     // Small delay for UX
     await new Promise(resolve => setTimeout(resolve, 600));
