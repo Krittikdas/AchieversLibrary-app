@@ -940,6 +940,7 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
               onIssueCard={handleIssueCard}
               onReturnCard={handleReturnCard}
               onAssignLocker={handleAssignLocker}
+              hideStats={true}
             />
           </div>
         );

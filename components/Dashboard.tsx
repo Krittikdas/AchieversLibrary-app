@@ -20,12 +20,13 @@ interface DashboardProps {
     onAssignLocker?: (memberId: string, paymentMode: 'CASH' | 'UPI' | 'INCLUDED') => void;
     onReturnLocker?: (memberId: string) => void;
     branch?: Branch;
+    hideStats?: boolean;
 }
 
 type DashboardView = 'OVERVIEW' | 'SNACKS' | 'JOINING' | 'MEMBERS' | 'CARDS' | 'LOCKERS';
 type MemberFilter = 'ALL' | 'ACTIVE' | 'EXPIRING' | 'EXPIRED';
 
-export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onRenew, onBack, readOnly, onIssueCard, onReturnCard, onAssignLocker, onReturnLocker, branch }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onRenew, onBack, readOnly, onIssueCard, onReturnCard, onAssignLocker, onReturnLocker, branch, hideStats }) => {
     const [view, setView] = useState<DashboardView>('OVERVIEW');
     const [memberFilter, setMemberFilter] = useState<MemberFilter>('ALL');
     const [paymentModeFilter, setPaymentModeFilter] = useState<'ALL' | 'CASH' | 'UPI'>('ALL');
@@ -783,18 +784,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
                 >
                     Members & Expiry
                 </button>
-                <button
-                    onClick={() => setView('CARDS')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${view === 'CARDS' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                >
-                    Card Stats
-                </button>
-                <button
-                    onClick={() => setView('LOCKERS')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${view === 'LOCKERS' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                >
-                    Locker Stats
-                </button>
+                {!hideStats && (
+                    <button
+                        onClick={() => setView('CARDS')}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${view === 'CARDS' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                        Card Stats
+                    </button>
+                )}
+                {!hideStats && (
+                    <button
+                        onClick={() => setView('LOCKERS')}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${view === 'LOCKERS' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                        Locker Stats
+                    </button>
+                )}
             </div>
 
             <div className="animate-fade-in">

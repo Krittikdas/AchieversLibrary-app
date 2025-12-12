@@ -51,7 +51,11 @@ const DataExportSection: React.FC<DataExportSectionProps> = ({ branches, members
       JoinDate: new Date(m.join_date).toLocaleDateString(),
       ExpiryDate: new Date(m.expiry_date).toLocaleDateString(),
       Status: new Date(m.expiry_date) < new Date() ? 'Expired' : 'Active',
-      RegisteredBy: m.registered_by
+      RegisteredBy: m.registered_by,
+      CardIssued: m.card_issued ? 'Yes' : 'No',
+      CardPayment: m.card_payment_mode || 'N/A',
+      LockerAssigned: m.locker_assigned ? 'Yes' : 'No',
+      LockerPayment: m.locker_payment_mode || 'N/A'
     }));
 
     if (branchMembers.length === 0) {
