@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Member, Transaction, TransactionType, Branch } from '../types';
-import { Users, TrendingUp, Clock, AlertCircle, Calendar, Filter, Search, UserPlus, RefreshCw, CreditCard, Lock } from 'lucide-react';
+import { Users, TrendingUp, Clock, AlertCircle, Calendar, Filter, Search, UserPlus, RefreshCw, CreditCard, Lock, Trash2 } from 'lucide-react';
 import { CardManagement } from './CardManagement';
 import { LockerManagement } from './LockerManagement';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from 'recharts';
@@ -21,18 +21,21 @@ interface DashboardProps {
     onReturnLocker?: (memberId: string) => void;
     branch?: Branch;
     hideStats?: boolean;
+    onDeleteMembers?: (memberIds: string[]) => void;
 }
 
 type DashboardView = 'OVERVIEW' | 'SNACKS' | 'JOINING' | 'MEMBERS' | 'CARDS' | 'LOCKERS';
 type MemberFilter = 'ALL' | 'ACTIVE' | 'EXPIRING' | 'EXPIRED';
 
-export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onRenew, onBack, readOnly, onIssueCard, onReturnCard, onAssignLocker, onReturnLocker, branch, hideStats }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onRenew, onBack, readOnly, onIssueCard, onReturnCard, onAssignLocker, onReturnLocker, branch, hideStats, onDeleteMembers }) => {
     const [view, setView] = useState<DashboardView>('OVERVIEW');
     const [memberFilter, setMemberFilter] = useState<MemberFilter>('ALL');
     const [paymentModeFilter, setPaymentModeFilter] = useState<'ALL' | 'CASH' | 'UPI'>('ALL');
     const [searchTerm, setSearchTerm] = useState('');
     const [cardIssuePopup, setCardIssuePopup] = useState<string | null>(null); // member id for popup
     const [lockerAssignPopup, setLockerAssignPopup] = useState<string | null>(null); // member id for popup
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
 
     // --- Calculations ---
     const today = new Date();
@@ -550,15 +553,58 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
                         </button>
                     ))}
                 </div>
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    <input
-                        type="text"
-                        placeholder="Search name, purpose, receptionist..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full md:w-64"
-                    />
+                <div className="flex gap-2 items-center">
+                    {/* Delete / Selection Controls */}
+                    {!readOnly && onDeleteMembers && (
+                        isSelectionMode ? (
+                            <div className="flex items-center gap-2 animate-fade-in-right">
+                                <span className="text-sm text-slate-600 font-medium bg-slate-100 px-3 py-2 rounded-full">
+                                    {selectedMemberIds.size} selected
+                                </span>
+                                <button
+                                    onClick={() => {
+                                        if (confirm(`Are you sure you want to delete ${selectedMemberIds.size} members? This cannot be undone.`)) {
+                                            onDeleteMembers(Array.from(selectedMemberIds));
+                                            setIsSelectionMode(false);
+                                            setSelectedMemberIds(new Set());
+                                        }
+                                    }}
+                                    disabled={selectedMemberIds.size === 0}
+                                    className="px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-all"
+                                >
+                                    Delete Selected
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setIsSelectionMode(false);
+                                        setSelectedMemberIds(new Set());
+                                    }}
+                                    className="px-4 py-2 bg-white text-slate-600 text-sm font-semibold rounded-lg border border-slate-300 hover:bg-slate-50 transition-all"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={() => setIsSelectionMode(true)}
+                                className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Delete Members"
+                            >
+                                <Trash2 size={20} />
+                            </button>
+                        )
+                    )}
+
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        <input
+                            type="text"
+                            placeholder="Search name, purpose, receptionist..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full md:w-64"
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -566,6 +612,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
                 <table className="w-full text-left whitespace-nowrap">
                     <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold sticky top-0 z-10 shadow-sm">
                         <tr>
+                            {/* Checkbox Column */}
+                            {isSelectionMode && (
+                                <th className="px-6 py-3 w-10">
+                                    <input
+                                        type="checkbox"
+                                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                        onChange={(e) => {
+                                            if (e.target.checked) {
+                                                setSelectedMemberIds(new Set(filteredMembers.map(m => m.id)));
+                                            } else {
+                                                setSelectedMemberIds(new Set());
+                                            }
+                                        }}
+                                        checked={filteredMembers.length > 0 && selectedMemberIds.size === filteredMembers.length}
+                                    />
+                                </th>
+                            )}
                             <th className="px-6 py-3">Member Name</th>
                             <th className="px-6 py-3">Joined On</th>
                             <th className="px-6 py-3">Expires On</th>
@@ -579,7 +642,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
                     <tbody className="divide-y divide-slate-100">
                         {filteredMembers.length === 0 ? (
                             <tr>
-                                <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
+                                <td colSpan={isSelectionMode ? 9 : 8} className="px-6 py-10 text-center text-slate-400">
                                     No members found matching filters.
                                 </td>
                             </tr>
@@ -592,7 +655,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
                                             'bg-red-100 text-red-800';
 
                                 return (
-                                    <tr key={m.id} className="hover:bg-slate-50">
+                                    <tr key={m.id} className={`hover:bg-slate-50 ${selectedMemberIds.has(m.id) ? 'bg-indigo-50' : ''}`}>
+                                        {/* Checkbox Cell */}
+                                        {isSelectionMode && (
+                                            <td className="px-6 py-4">
+                                                <input
+                                                    type="checkbox"
+                                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                    checked={selectedMemberIds.has(m.id)}
+                                                    onChange={(e) => {
+                                                        const newSet = new Set(selectedMemberIds);
+                                                        if (e.target.checked) {
+                                                            newSet.add(m.id);
+                                                        } else {
+                                                            newSet.delete(m.id);
+                                                        }
+                                                        setSelectedMemberIds(newSet);
+                                                    }}
+                                                />
+                                            </td>
+                                        )}
                                         <td className="px-6 py-4 font-medium text-slate-900">
                                             {m.full_name}
                                             <div className="text-xs font-normal text-slate-500">{m.phone}</div>

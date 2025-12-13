@@ -733,6 +733,52 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
     }
   };
 
+  const handleDeleteMembers = async (memberIds: string[]) => {
+    if (!memberIds.length) return;
+
+    // Confirm locally if needed, but UI usually handles confirmation
+    console.log("Attempting to delete members:", memberIds);
+
+    try {
+      // 1. Delete associated transactions first to avoid FK constraint issues
+      const { data: txData, error: txError } = await supabase
+        .from('transactions')
+        .delete()
+        .in('member_id', memberIds)
+        .select();
+
+      if (txError) {
+        console.error("Transaction delete error:", txError);
+        alert(`Error deleting transactions: ${txError.message} (${txError.code})`);
+        throw txError;
+      }
+      console.log("Deleted transactions:", txData);
+
+      // 2. Delete the members
+      const { data: memData, error: memberError } = await supabase
+        .from('members')
+        .delete()
+        .in('id', memberIds)
+        .select();
+
+      if (memberError) {
+        console.error("Member delete error:", memberError);
+        alert(`Error deleting members: ${memberError.message} (${memberError.code})`);
+        throw memberError;
+      }
+
+      setAppState(prev => ({
+        ...prev,
+        members: prev.members.filter(m => !memberIds.includes(m.id)),
+        transactions: prev.transactions.filter(t => !memberIds.includes(t.member_id))
+      }));
+
+    } catch (err: any) {
+      console.error("Error deleting members:", err);
+      // alert(`Failed to delete members: ${err.message}`);
+    }
+  };
+
   const handleSnackSale = async (amount: number, description: string, paymentMode: 'CASH' | 'UPI') => {
     if (!profile?.branch_id) return;
 
@@ -845,6 +891,7 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
             onBack={() => setAdminViewBranchId(null)}
             readOnly={true}
             branch={targetBranch}
+            onDeleteMembers={handleDeleteMembers}
           />
         );
       }
@@ -942,6 +989,7 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
               onReturnCard={handleReturnCard}
               onAssignLocker={handleAssignLocker}
               hideStats={true}
+              onDeleteMembers={handleDeleteMembers}
             />
           </div>
         );
