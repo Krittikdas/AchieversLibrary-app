@@ -477,7 +477,8 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
         card_payment_mode: cardIssued ? cardPaymentMode : null,
         card_returned: false,
         locker_assigned: lockerAssigned || false,
-        locker_payment_mode: lockerAssigned ? lockerPaymentMode : null
+        locker_payment_mode: lockerAssigned ? lockerPaymentMode : null,
+        locker_number: member.locker_number || null
       })
       .select()
       .single();
@@ -684,7 +685,7 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
   };
 
   // Assign locker to existing member
-  const handleAssignLocker = async (memberId: string, paymentMode: 'CASH' | 'UPI' | 'INCLUDED') => {
+  const handleAssignLocker = async (memberId: string, paymentMode: 'CASH' | 'UPI' | 'INCLUDED', lockerNumber: string) => {
     if (!profile?.branch_id) return;
 
     const member = appState.members.find(m => m.id === memberId);
@@ -693,7 +694,7 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
     try {
       const { error: memberError } = await supabase
         .from('members')
-        .update({ locker_assigned: true, locker_payment_mode: paymentMode })
+        .update({ locker_assigned: true, locker_payment_mode: paymentMode, locker_number: lockerNumber })
         .eq('id', memberId);
 
       if (memberError) throw memberError;
@@ -706,7 +707,7 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
           .insert({
             type: TransactionType.LOCKER,
             amount: 200,
-            description: `Locker Assigned - ${member.full_name}`,
+            description: `Locker Assigned - ${member.full_name} (${lockerNumber})`,
             branch_id: profile.branch_id,
             member_id: memberId,
             status: 'COMPLETED',
@@ -722,7 +723,7 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
       setAppState(prev => ({
         ...prev,
         members: prev.members.map(m =>
-          m.id === memberId ? { ...m, locker_assigned: true, locker_payment_mode: paymentMode } : m
+          m.id === memberId ? { ...m, locker_assigned: true, locker_payment_mode: paymentMode, locker_number: lockerNumber } : m
         ),
         transactions: newTx ? [...prev.transactions, newTx] : prev.transactions
       }));

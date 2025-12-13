@@ -38,6 +38,7 @@ export interface Member {
   card_returned?: boolean;
   locker_assigned?: boolean;
   locker_payment_mode?: 'CASH' | 'UPI' | 'INCLUDED';
+  locker_number?: string;
 }
 
 export interface Transaction {

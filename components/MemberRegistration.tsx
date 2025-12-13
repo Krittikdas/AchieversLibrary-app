@@ -43,7 +43,8 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
     cardIssued: false, // Card feature
     cardPaymentMode: 'CASH' as 'CASH' | 'UPI', // Card payment method
     lockerAssigned: false,
-    lockerPaymentMode: 'CASH' as 'CASH' | 'UPI' | 'INCLUDED'
+    lockerPaymentMode: 'CASH' as 'CASH' | 'UPI' | 'INCLUDED',
+    lockerNumber: ''
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -70,7 +71,8 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
         cardIssued: false,
         cardPaymentMode: 'CASH',
         lockerAssigned: false,
-        lockerPaymentMode: 'CASH'
+        lockerPaymentMode: 'CASH',
+        lockerNumber: ''
       }));
     }
   }, [initialData]);
@@ -84,6 +86,13 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
     }
   }, [formData.subscriptionPlan]);
 
+  const calculateTotalAmount = () => {
+    let total = Number(formData.price) || 0;
+    if (formData.cardIssued) total += 100;
+    if (formData.lockerAssigned && formData.dailyAccessHours !== AccessHours.HOURS_24) total += 200;
+    return total;
+  };
+
   const validate = () => {
     const newErrors: Record<string, string> = {};
     if (formData.fullName.length < 3) newErrors.fullName = "Name must be at least 3 characters.";
@@ -93,6 +102,10 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
     if (formData.studyPurpose.length < 2) newErrors.studyPurpose = "Please enter a purpose (e.g. UPSC).";
     if (formData.registeredBy.length < 2) newErrors.registeredBy = "Receptionist name required.";
     if (!formData.price || Number(formData.price) <= 0) newErrors.price = "Please enter a valid amount.";
+
+    if (formData.lockerAssigned && !formData.lockerNumber) {
+      newErrors.lockerNumber = "Locker number is required when assigning a locker.";
+    }
 
     if (formData.subscriptionPlan === SubscriptionPlan.CUSTOM) {
       if (!formData.customDurationValue || Number(formData.customDurationValue) <= 0) newErrors.customDuration = "Duration required.";
@@ -211,7 +224,8 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
         card_payment_mode: formData.cardIssued ? formData.cardPaymentMode : undefined,
         card_returned: false,
         locker_assigned: formData.lockerAssigned,
-        locker_payment_mode: formData.lockerAssigned ? formData.lockerPaymentMode : undefined
+        locker_payment_mode: formData.lockerAssigned ? formData.lockerPaymentMode : undefined,
+        locker_number: formData.lockerAssigned ? formData.lockerNumber : undefined
       };
 
       const amount = Number(formData.price);
@@ -252,7 +266,8 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
         cardIssued: false,
         cardPaymentMode: 'CASH',
         lockerAssigned: false,
-        lockerPaymentMode: 'CASH'
+        lockerPaymentMode: 'CASH',
+        lockerNumber: ''
       });
       setErrors({});
       setShowSuccess(true);
@@ -298,7 +313,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
                 value={formData.fullName}
                 onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                 className={`w-full px-3 py-2 rounded-lg border ${errors.fullName ? 'border-red-500' : 'border-slate-300'} focus:ring-2 focus:ring-indigo-200 focus:outline-none`}
-                placeholder="krittik das"
+                placeholder="Name"
               />
               {errors.fullName && <p className="text-red-500 text-xs mt-1">{errors.fullName}</p>}
             </div>
@@ -326,7 +341,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 className={`w-full px-3 py-2 rounded-lg border ${errors.email ? 'border-red-500' : 'border-slate-300'} focus:ring-2 focus:ring-indigo-200 focus:outline-none`}
-                placeholder="john@example.com"
+                placeholder="name@example.com"
               />
               {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
             </div>
@@ -555,7 +570,7 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
                   </div>
                 )}
                 <div className="col-span-2 text-xs text-slate-500 italic">
-                  Total: ₹{(Number(formData.cashAmount) || 0) + (Number(formData.upiAmount) || 0)} / ₹{formData.price || 0}
+                  Subscription Total: ₹{(Number(formData.cashAmount) || 0) + (Number(formData.upiAmount) || 0)} / ₹{formData.price || 0}
                 </div>
               </div>
             )}
@@ -663,6 +678,23 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
                   </div>
                 </div>
 
+                {/* Locker Number Field */}
+                {formData.lockerAssigned && (
+                  <div className="mt-4 mb-2">
+                    <label htmlFor="locker-number" className="block text-sm font-medium text-pink-800 mb-1">Locker Number *</label>
+                    <input
+                      id="locker-number"
+                      name="lockerNumber"
+                      type="text"
+                      value={formData.lockerNumber}
+                      onChange={(e) => setFormData({ ...formData, lockerNumber: e.target.value })}
+                      className={`w-full px-3 py-2 rounded-lg border ${errors.lockerNumber ? 'border-red-500' : 'border-pink-200'} focus:ring-2 focus:ring-pink-200 focus:outline-none`}
+                      placeholder="e.g. L-101"
+                    />
+                    {errors.lockerNumber && <p className="text-red-500 text-xs mt-1">{errors.lockerNumber}</p>}
+                  </div>
+                )}
+
                 {/* Locker Payment Method */}
                 {formData.lockerAssigned && formData.dailyAccessHours !== AccessHours.HOURS_24 && (
                   <div className="mt-3 pt-3 border-t border-pink-200">
@@ -716,15 +748,30 @@ export const MemberRegistration: React.FC<MemberRegistrationProps> = ({ branchId
 
           </div>
 
-          <div className="pt-4 flex justify-end">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-100 font-medium flex items-center space-x-2 disabled:opacity-70 transition-all"
-            >
-              {isSubmitting && <Loader2 className="animate-spin" size={20} />}
-              <span>Register Member</span>
-            </button>
+          <div className="border-t border-slate-200 pt-4 mt-6">
+            <div className="flex justify-between items-center mb-4 text-slate-800">
+              <span className="text-lg font-medium">Total Payable:</span>
+              <div className="text-right">
+                <span className="text-3xl font-bold text-indigo-700">₹{calculateTotalAmount()}</span>
+                <p className="text-xs text-slate-500">
+                  Base: ₹{Number(formData.price) || 0}
+                  {formData.cardIssued && ' + Card: ₹100'}
+                  {formData.lockerAssigned && formData.dailyAccessHours !== AccessHours.HOURS_24 && ' + Locker: ₹200'}
+                  {formData.lockerAssigned && formData.dailyAccessHours === AccessHours.HOURS_24 && ' + Locker: ₹0 (Free)'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="bg-indigo-600 text-white px-8 py-3 rounded-xl hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-100 font-medium flex items-center space-x-2 disabled:opacity-70 transition-all shadow-lg hover:shadow-xl"
+              >
+                {isSubmitting && <Loader2 className="animate-spin" size={20} />}
+                <span>Register Member</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>

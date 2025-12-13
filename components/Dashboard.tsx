@@ -17,7 +17,7 @@ interface DashboardProps {
     readOnly?: boolean;
     onIssueCard?: (memberId: string, paymentMode: 'CASH' | 'UPI') => void;
     onReturnCard?: (memberId: string) => void;
-    onAssignLocker?: (memberId: string, paymentMode: 'CASH' | 'UPI' | 'INCLUDED') => void;
+    onAssignLocker?: (memberId: string, paymentMode: 'CASH' | 'UPI' | 'INCLUDED', lockerNumber: string) => void;
     onReturnLocker?: (memberId: string) => void;
     branch?: Branch;
     hideStats?: boolean;
@@ -686,30 +686,53 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
                                                 {m.locker_assigned ? (
                                                     <span className="px-2 py-1 bg-pink-100 text-pink-700 text-xs font-medium rounded flex items-center gap-1 inline-flex">
                                                         <span role="img" aria-label="locker">🔒</span>
-                                                        Assigned
+                                                        {m.locker_number || 'Assigned'}
                                                     </span>
                                                 ) : (
                                                     !readOnly && onAssignLocker ? (
                                                         lockerAssignPopup === m.id ? (
-                                                            <div className="flex gap-1">
-                                                                <button
-                                                                    onClick={() => { onAssignLocker(m.id, 'CASH'); setLockerAssignPopup(null); }}
-                                                                    className="px-2 py-1 bg-green-500 text-white text-xs font-medium rounded hover:bg-green-600"
-                                                                >
-                                                                    Cash
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => { onAssignLocker(m.id, 'UPI'); setLockerAssignPopup(null); }}
-                                                                    className="px-2 py-1 bg-blue-500 text-white text-xs font-medium rounded hover:bg-blue-600"
-                                                                >
-                                                                    UPI
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => setLockerAssignPopup(null)}
-                                                                    className="px-1 text-slate-400 hover:text-slate-600"
-                                                                >
-                                                                    ✕
-                                                                </button>
+                                                            <div className="flex flex-col gap-2 p-1">
+                                                                <input
+                                                                    type="text"
+                                                                    id={`locker-input-${m.id}`}
+                                                                    className="w-24 px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:border-indigo-500"
+                                                                    placeholder="Locker #"
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                />
+                                                                <div className="flex gap-1 justify-center">
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            const input = document.getElementById(`locker-input-${m.id}`) as HTMLInputElement;
+                                                                            const lockerNum = input?.value;
+                                                                            if (lockerNum) {
+                                                                                onAssignLocker(m.id, 'CASH', lockerNum);
+                                                                                setLockerAssignPopup(null);
+                                                                            }
+                                                                        }}
+                                                                        className="px-2 py-1 bg-green-500 text-white text-xs font-medium rounded hover:bg-green-600"
+                                                                    >
+                                                                        Cash
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            const input = document.getElementById(`locker-input-${m.id}`) as HTMLInputElement;
+                                                                            const lockerNum = input?.value;
+                                                                            if (lockerNum) {
+                                                                                onAssignLocker(m.id, 'UPI', lockerNum);
+                                                                                setLockerAssignPopup(null);
+                                                                            }
+                                                                        }}
+                                                                        className="px-2 py-1 bg-blue-500 text-white text-xs font-medium rounded hover:bg-blue-600"
+                                                                    >
+                                                                        UPI
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setLockerAssignPopup(null)}
+                                                                        className="px-1 text-slate-400 hover:text-slate-600"
+                                                                    >
+                                                                        ✕
+                                                                    </button>
+                                                                </div>
                                                             </div>
                                                         ) : (
                                                             <button
