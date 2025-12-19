@@ -21,6 +21,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, curre
     { id: 'create_branch', label: 'Make New Branch', icon: Building2, role: 'ADMIN' },
     { id: 'receptionists', label: 'Receptionists', icon: Users, role: 'ADMIN' },
     { id: 'manage_snacks', label: 'Manage Snacks', icon: UtensilsCrossed, role: 'RECEPTION' },
+    { id: 'cards', label: 'Card Manager', icon: CreditCard, role: 'RECEPTION' },
+    { id: 'lockers', label: 'Locker Manager', icon: Lock, role: 'RECEPTION' },
   ];
 
   return (
