@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import { Search, Crown, Eye, X, Calendar, CreditCard, Lock, User, Clock, MapPin, Phone, Mail } from 'lucide-react';
+import { Search, Crown, Eye, X, Calendar, CreditCard, Lock, User, Clock, MapPin, Phone, Mail, Trash2 } from 'lucide-react';
 import { Member } from '../types';
 
 interface RegisteredMembersProps {
     members: Member[];
     onAddMembership: (member: Member) => void;
     branchName: string;
+    onDeleteMember?: (memberId: string) => void;
 }
 
-export const RegisteredMembers: React.FC<RegisteredMembersProps> = ({ members, onAddMembership, branchName }) => {
+export const RegisteredMembers: React.FC<RegisteredMembersProps> = ({ members, onAddMembership, branchName, onDeleteMember }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedMember, setSelectedMember] = useState<Member | null>(null);
 
@@ -260,7 +261,6 @@ export const RegisteredMembers: React.FC<RegisteredMembersProps> = ({ members, o
                                     <tr key={member.id} className="hover:bg-slate-50">
                                         <td className="px-6 py-4">
                                             <div className="font-medium text-slate-800">{member.full_name}</div>
-                                            <div className="text-xs text-slate-500">RID: {member.id.substring(0, 8)}</div>
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="text-sm text-slate-600">{member.phone}</div>
@@ -295,6 +295,19 @@ export const RegisteredMembers: React.FC<RegisteredMembersProps> = ({ members, o
                                                 >
                                                     <Crown size={14} />
                                                     Add Plan
+                                                </button>
+                                            )}
+                                            {onDeleteMember && (
+                                                <button
+                                                    onClick={() => {
+                                                        if (window.confirm(`Are you sure you want to delete ${member.full_name}? This cannot be undone.`)) {
+                                                            onDeleteMember(member.id);
+                                                        }
+                                                    }}
+                                                    className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-1.5"
+                                                    title="Delete Member"
+                                                >
+                                                    <Trash2 size={14} />
                                                 </button>
                                             )}
                                         </td>

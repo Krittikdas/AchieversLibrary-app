@@ -78,7 +78,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
         const statusMatch =
             memberFilter === 'ALL' ? (status === 'ACTIVE' || status === 'EXPIRING') : // All active members (not expired)
                 memberFilter === 'EXPIRING' ? status === 'EXPIRING' :
-                    status === 'EXPIRED';
+                    (status === 'EXPIRED' && m.subscription_plan);
 
         const searchMatch =
             m.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -766,7 +766,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
                                             <div className="text-xs font-normal text-slate-500">{m.phone}</div>
                                         </td>
                                         <td className="px-6 py-4 text-sm font-semibold text-indigo-600">
-                                            {m.seat_no || '-'}
+                                            {status === 'EXPIRED' ? '' : (m.seat_no || '-')}
                                         </td>
                                         <td className="px-6 py-4 text-slate-600 text-sm">
                                             {new Date(m.join_date).toLocaleDateString()}

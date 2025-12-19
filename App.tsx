@@ -1122,6 +1122,7 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
               members={branchMembers}
               onAddMembership={(m) => setSelectedMemberForMembership(m)}
               branchName={currentBranch?.name || ''}
+              onDeleteMember={(id) => handleDeleteMembers([id])}
             />
           );
         case 'manage_snacks':
