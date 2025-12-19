@@ -2,6 +2,7 @@
 ALTER TABLE members ALTER COLUMN subscription_plan DROP NOT NULL;
 ALTER TABLE members ALTER COLUMN daily_access_hours DROP NOT NULL;
 ALTER TABLE members ADD COLUMN IF NOT EXISTS seat_no TEXT;
+ALTER TABLE members ADD COLUMN IF NOT EXISTS current_plan_start_date TIMESTAMPTZ;
 
 -- 2. ENABLE RLS (if not already)
 ALTER TABLE members ENABLE ROW LEVEL SECURITY;

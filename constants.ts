@@ -1,11 +1,14 @@
 
 import { Branch } from './types';
 
+/*
 export const MOCK_BRANCHES: Branch[] = [
   { id: 'b_north', name: 'North Campus Library', location: 'Sector 12, North City', email: 'reception@north.example', password: 'RecepNorth123' },
   { id: 'b_south', name: 'South City Reading Room', location: 'Green Park, South City', email: 'reception@south.example', password: 'RecepSouth123' },
   { id: 'b_east', name: 'Eastside Book Haven', location: 'Tech Park, East City', email: 'reception@east.example', password: 'RecepEast123' },
 ];
+*/
+export const MOCK_BRANCHES: Branch[] = [];
 
 export const SNACK_ITEMS = [
   { id: 's_chips', name: 'Potato Chips', price: 20 },

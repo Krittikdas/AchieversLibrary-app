@@ -41,6 +41,7 @@ export interface Member {
   locker_payment_mode?: 'CASH' | 'UPI' | 'INCLUDED';
   locker_number?: string;
   seat_no?: string;
+  current_plan_start_date?: string;
 }
 
 export interface Transaction {
@@ -64,6 +65,7 @@ export interface Branch {
   email: string;
   total_cards?: number;
   total_lockers?: number;
+  password?: string;
 }
 
 export interface AppState {
