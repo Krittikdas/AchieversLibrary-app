@@ -15,6 +15,7 @@ export enum AccessHours {
 
 export enum TransactionType {
   MEMBERSHIP = 'MEMBERSHIP',
+  REGISTRATION = 'REGISTRATION',
   SNACK = 'SNACK',
   CARD = 'CARD',
   LOCKER = 'LOCKER'
@@ -28,8 +29,8 @@ export interface Member {
   email: string;
   join_date: string; // ISO Date string
   expiry_date: string; // ISO Date string
-  subscription_plan: string;
-  daily_access_hours: string;
+  subscription_plan?: string;
+  daily_access_hours?: string;
   study_purpose: string;
   registered_by: string;
   branch_id: string;
@@ -39,6 +40,7 @@ export interface Member {
   locker_assigned?: boolean;
   locker_payment_mode?: 'CASH' | 'UPI' | 'INCLUDED';
   locker_number?: string;
+  seat_no?: string;
 }
 
 export interface Transaction {
@@ -68,6 +70,7 @@ export interface AppState {
   branches: Branch[];
   members: Member[];
   transactions: Transaction[];
+  snacks: Snack[];
 }
 
 export interface Profile {
@@ -81,5 +84,6 @@ export interface Snack {
   name: string;
   price: number;
   is_active: boolean;
+  branch_id?: string;
 }
 

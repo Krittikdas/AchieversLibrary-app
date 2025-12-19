@@ -3,7 +3,11 @@ import { Plus, Trash2, Loader2, UtensilsCrossed } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { Snack } from '../types';
 
-export const SnackManager: React.FC = () => {
+interface SnackManagerProps {
+    branchId: string;
+}
+
+export const SnackManager: React.FC<SnackManagerProps> = ({ branchId }) => {
     const [snacks, setSnacks] = useState<Snack[]>([]);
     const [newSnackName, setNewSnackName] = useState('');
     const [newSnackPrice, setNewSnackPrice] = useState('');
@@ -11,8 +15,8 @@ export const SnackManager: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        fetchSnacks();
-    }, []);
+        if (branchId) fetchSnacks();
+    }, [branchId]);
 
     const fetchSnacks = async () => {
         setIsLoading(true);
@@ -20,6 +24,7 @@ export const SnackManager: React.FC = () => {
             .from('snacks')
             .select('*')
             .eq('is_active', true)
+            .eq('branch_id', branchId) // Filter by branch
             .order('name');
 
         if (data) setSnacks(data);
@@ -28,14 +33,15 @@ export const SnackManager: React.FC = () => {
 
     const handleAddSnack = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newSnackName || !newSnackPrice) return;
+        if (!newSnackName || !newSnackPrice || !branchId) return;
         setIsAddingSnack(true);
 
         const { error } = await supabase
             .from('snacks')
             .insert({
                 name: newSnackName,
-                price: Number(newSnackPrice)
+                price: Number(newSnackPrice),
+                branch_id: branchId
             });
 
         if (!error) {

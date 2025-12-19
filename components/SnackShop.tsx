@@ -6,9 +6,10 @@ import { Snack } from '../types';
 
 interface SnackShopProps {
   onSale: (amount: number, description: string, paymentMode: 'CASH' | 'UPI') => void;
+  branchId: string;
 }
 
-export const SnackShop: React.FC<SnackShopProps> = ({ onSale }) => {
+export const SnackShop: React.FC<SnackShopProps> = ({ onSale, branchId }) => {
   const [snacks, setSnacks] = useState<Snack[]>([]);
   const [cart, setCart] = useState<Record<string, number>>({});
   const [isProcessing, setIsProcessing] = useState(false);
@@ -17,14 +18,15 @@ export const SnackShop: React.FC<SnackShopProps> = ({ onSale }) => {
 
 
   React.useEffect(() => {
-    fetchSnacks();
-  }, []);
+    if (branchId) fetchSnacks();
+  }, [branchId]);
 
   const fetchSnacks = async () => {
     const { data, error } = await supabase
       .from('snacks')
       .select('*')
       .eq('is_active', true)
+      .eq('branch_id', branchId)
       .order('name');
 
     if (data) setSnacks(data);

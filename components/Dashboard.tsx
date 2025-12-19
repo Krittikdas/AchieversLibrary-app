@@ -1,8 +1,8 @@
 
 
 import React, { useState } from 'react';
-import { Member, Transaction, TransactionType, Branch } from '../types';
-import { Users, TrendingUp, Clock, AlertCircle, Calendar, Filter, Search, UserPlus, RefreshCw, CreditCard, Lock, Trash2 } from 'lucide-react';
+import { Member, Transaction, TransactionType, Branch, Snack } from '../types';
+import { Users, TrendingUp, Clock, AlertCircle, Calendar, Filter, Search, UserPlus, RefreshCw, CreditCard, Lock, Trash2, Tag } from 'lucide-react';
 import { CardManagement } from './CardManagement';
 import { LockerManagement } from './LockerManagement';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from 'recharts';
@@ -12,6 +12,7 @@ const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 interface DashboardProps {
     members: Member[];
     transactions: Transaction[];
+    snacks?: Snack[];
     onRenew: (member: Member) => void;
     onBack?: () => void;
     readOnly?: boolean;
@@ -27,7 +28,7 @@ interface DashboardProps {
 type DashboardView = 'OVERVIEW' | 'SNACKS' | 'JOINING' | 'MEMBERS' | 'CARDS' | 'LOCKERS';
 type MemberFilter = 'ALL' | 'ACTIVE' | 'EXPIRING' | 'EXPIRED';
 
-export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onRenew, onBack, readOnly, onIssueCard, onReturnCard, onAssignLocker, onReturnLocker, branch, hideStats, onDeleteMembers }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, snacks = [], onRenew, onBack, readOnly, onIssueCard, onReturnCard, onAssignLocker, onReturnLocker, branch, hideStats, onDeleteMembers }) => {
     const [view, setView] = useState<DashboardView>('OVERVIEW');
     const [memberFilter, setMemberFilter] = useState<MemberFilter>('ALL');
     const [paymentModeFilter, setPaymentModeFilter] = useState<'ALL' | 'CASH' | 'UPI'>('ALL');
@@ -417,6 +418,90 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
                     </ResponsiveContainer>
                 </div>
             </div>
+
+            {/* Snack Item Performance */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                    <h3 className="font-bold text-slate-800">Snack Item Performance</h3>
+                    <span className="text-xs text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">
+                        Revenue based on current prices
+                    </span>
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                    <table className="w-full text-left">
+                        <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold sticky top-0 shadow-sm z-10">
+                            <tr>
+                                <th className="px-6 py-3 bg-slate-50 w-full">Item Name</th>
+                                <th className="px-6 py-3 bg-slate-50 text-right">Qty Sold</th>
+                                <th className="px-6 py-3 bg-slate-50 text-right">Total Sales</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {(() => {
+                                const itemStats: Record<string, { qty: number; revenue: number }> = {};
+
+                                transactions
+                                    .filter(t => t.type === TransactionType.SNACK)
+                                    .forEach(t => {
+                                        // Filter by payment mode if needed
+                                        if (paymentModeFilter !== 'ALL') {
+                                            if (paymentModeFilter === 'CASH' && t.payment_mode !== 'CASH' && t.payment_mode !== 'SPLIT') return;
+                                            if (paymentModeFilter === 'UPI' && t.payment_mode !== 'UPI' && t.payment_mode !== 'SPLIT') return;
+                                        }
+
+                                        // Parse description: "Snacks: 2x Chips, 1x Cola"
+                                        const desc = t.description.replace('Snacks: ', '');
+                                        const parts = desc.split(', ');
+
+                                        parts.forEach(part => {
+                                            const match = part.match(/(\d+)x (.+)/);
+                                            if (match) {
+                                                const qty = parseInt(match[1], 10);
+                                                const name = match[2];
+
+                                                if (!itemStats[name]) itemStats[name] = { qty: 0, revenue: 0 };
+                                                itemStats[name].qty += qty;
+
+                                                // Calculate revenue based on current snack price
+                                                const snack = snacks.find(s => s.name === name);
+                                                if (snack) {
+                                                    itemStats[name].revenue += qty * snack.price;
+                                                }
+                                            }
+                                        });
+                                    });
+
+                                const sortedItems = Object.entries(itemStats)
+                                    .sort(([, a], [, b]) => b.revenue - a.revenue);
+
+                                if (sortedItems.length === 0) {
+                                    return (
+                                        <tr>
+                                            <td colSpan={3} className="px-6 py-8 text-center text-slate-400 italic">
+                                                No snack sales found matching filters.
+                                            </td>
+                                        </tr>
+                                    );
+                                }
+
+                                return sortedItems.map(([name, stats]) => (
+                                    <tr key={name} className="hover:bg-slate-50">
+                                        <td className="px-6 py-4 text-sm font-medium text-slate-800">
+                                            {name}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-slate-600 text-right font-mono">
+                                            {stats.qty}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm font-bold text-slate-700 text-right font-mono">
+                                            ₹{stats.revenue}
+                                        </td>
+                                    </tr>
+                                ));
+                            })()}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     );
 
@@ -630,6 +715,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
                                 </th>
                             )}
                             <th className="px-6 py-3">Member Name</th>
+                            <th className="px-6 py-3">Seat No</th>
                             <th className="px-6 py-3">Joined On</th>
                             <th className="px-6 py-3">Expires On</th>
                             <th className="px-6 py-3">Plan / Hours</th>
@@ -678,6 +764,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, onR
                                         <td className="px-6 py-4 font-medium text-slate-900">
                                             {m.full_name}
                                             <div className="text-xs font-normal text-slate-500">{m.phone}</div>
+                                        </td>
+                                        <td className="px-6 py-4 text-sm font-semibold text-indigo-600">
+                                            {m.seat_no || '-'}
                                         </td>
                                         <td className="px-6 py-4 text-slate-600 text-sm">
                                             {new Date(m.join_date).toLocaleDateString()}

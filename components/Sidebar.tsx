@@ -14,13 +14,14 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, currentRole, currentBranchName, onLogout, isOpen, onClose }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, role: 'ALL' },
-    { id: 'register', label: 'New Member', icon: UserPlus, role: 'RECEPTION' },
+    { id: 'new_registration', label: 'New Registration', icon: UserPlus, role: 'RECEPTION' },
+    { id: 'registered_members', label: 'Registered Members', icon: Users, role: 'RECEPTION' },
     { id: 'snacks', label: 'Snack POS', icon: Coffee, role: 'RECEPTION' },
-    { id: 'cards', label: 'Card Management', icon: CreditCard, role: 'RECEPTION' },
-    { id: 'lockers', label: 'Lockers', icon: Lock, role: 'RECEPTION' },
+    { id: 'cards', label: 'Card Management', icon: CreditCard, role: 'ADMIN' },
+    { id: 'lockers', label: 'Lockers', icon: Lock, role: 'ADMIN' },
     { id: 'create_branch', label: 'Make New Branch', icon: Building2, role: 'ADMIN' },
     { id: 'receptionists', label: 'Receptionists', icon: Users, role: 'ADMIN' },
-    { id: 'manage_snacks', label: 'Manage Snacks', icon: UtensilsCrossed, role: 'ADMIN' },
+    { id: 'manage_snacks', label: 'Manage Snacks', icon: UtensilsCrossed, role: 'RECEPTION' },
   ];
 
   return (

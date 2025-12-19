@@ -1,7 +1,9 @@
 // App.tsx
 import React, { useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
-import { MemberRegistration } from './components/MemberRegistration';
+import { RegistrationForm } from './components/RegistrationForm';
+import { RegisteredMembers } from './components/RegisteredMembers';
+import { MembershipForm } from './components/MembershipForm';
 import { SnackShop } from './components/SnackShop';
 import { SnackManager } from './components/SnackManager';
 import { Dashboard } from './components/Dashboard';
@@ -267,7 +269,7 @@ const LoginPage: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
             onClick={() => setTab('RECEPTION')}
             className={`ml-2 px-6 py-3 rounded-t-2xl font-medium ${tab === 'RECEPTION' ? 'bg-white border border-b-0 rounded-b-none text-indigo-700' : 'text-slate-500'}`}
           >
-            Receptionist
+            Branch
           </button>
         </div>
 
@@ -333,7 +335,7 @@ const LoginPage: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
                 disabled={loading}
                 className="w-full py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-70 flex justify-center"
               >
-                {loading ? <Loader2 className="animate-spin" /> : `Login as ${tab === 'ADMIN' ? 'Admin' : 'Receptionist'}`}
+                {loading ? <Loader2 className="animate-spin" /> : "Log in"}
               </button>
 
               <button
@@ -395,13 +397,14 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
   const [profileErrorDetails, setProfileErrorDetails] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
-  const [renewingMember, setRenewingMember] = useState<Member | null>(null);
+  const [selectedMemberForMembership, setSelectedMemberForMembership] = useState<Member | null>(null);
   const [adminViewBranchId, setAdminViewBranchId] = useState<string | null>(null);
 
   const [appState, setAppState] = useState<AppState>({
     branches: [],
     members: [],
-    transactions: []
+    transactions: [],
+    snacks: []
   });
 
   useEffect(() => {
@@ -425,16 +428,18 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
       setProfile(profileData);
 
       // Fetch Data based on RLS (Supabase handles filtering automatically)
-      const [branchesRes, membersRes, transactionsRes] = await Promise.all([
+      const [branchesRes, membersRes, transactionsRes, snacksRes] = await Promise.all([
         supabase.from('branches').select('*'),
         supabase.from('members').select('*'),
-        supabase.from('transactions').select('*')
+        supabase.from('transactions').select('*'),
+        supabase.from('snacks').select('*')
       ]);
 
       setAppState({
         branches: branchesRes.data || [],
         members: membersRes.data || [],
-        transactions: transactionsRes.data || []
+        transactions: transactionsRes.data || [],
+        snacks: snacksRes.data || []
       });
     };
 
@@ -444,7 +449,58 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
   const currentBranch = appState.branches.find(b => b.id === profile?.branch_id);
 
   // --- Handlers ---
-  const handleMemberRegistration = async (
+  const handleRegistrationSuccess = async (member: Member, amount: number, paymentMode: 'CASH' | 'UPI' | 'SPLIT', cashAmt?: number, upiAmt?: number) => {
+    if (!profile?.branch_id) return;
+
+    const { data: insertedMember, error: memberError } = await supabase
+      .from('members')
+      .insert(member)
+      .select()
+      .single();
+
+    if (memberError) {
+      console.error("Error registering member:", memberError);
+      alert("Registration failed: " + memberError.message);
+      return;
+    }
+
+    // Fallback to local member object if RLS blocks reading the inserted row
+    const finalMember = insertedMember || member;
+
+    const transactionData: any = {
+      type: TransactionType.REGISTRATION,
+      amount,
+      description: `Registration Fee - ${member.full_name}`,
+      branch_id: profile.branch_id,
+      member_id: finalMember.id,
+      status: 'COMPLETED',
+      payment_mode: paymentMode
+    };
+
+    if (paymentMode === 'SPLIT') {
+      transactionData.cash_amount = cashAmt;
+      transactionData.upi_amount = upiAmt;
+    }
+
+    const { data: newTx, error: txError } = await supabase
+      .from('transactions')
+      .insert(transactionData)
+      .select()
+      .single();
+
+    if (txError) {
+      console.error("Error logging transaction:", txError);
+    }
+
+    // Local state update using finalMember
+    setAppState(prev => ({
+      ...prev,
+      members: [...prev.members, finalMember],
+      transactions: prev.transactions.concat(newTx ? [newTx] : [])
+    }));
+  };
+
+  const handleMembershipComplete = async (
     member: Member,
     amount: number,
     paymentMode: 'CASH' | 'UPI' | 'SPLIT',
@@ -453,141 +509,139 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
     cardIssued?: boolean,
     cardPaymentMode?: 'CASH' | 'UPI',
     lockerAssigned?: boolean,
-    lockerPaymentMode?: 'CASH' | 'UPI' | 'INCLUDED'
+    lockerPaymentMode?: 'CASH' | 'UPI' | 'INCLUDED',
+    seatNo?: string
   ) => {
     if (!profile?.branch_id) return;
 
-    // Insert or Update Member (Upsert)
-    const { data: newMember, error: memberError } = await supabase
+    // Update Member
+    const { data: updatedMember, error: memberError } = await supabase
       .from('members')
-      .upsert({
-        id: member.id, // Explicitly include ID for upsert
-        full_name: member.full_name,
-        address: member.address,
-        phone: member.phone,
-        email: member.email,
-        join_date: member.join_date,
-        expiry_date: member.expiry_date,
+      .update({
         subscription_plan: member.subscription_plan,
         daily_access_hours: member.daily_access_hours,
-        study_purpose: member.study_purpose,
-        registered_by: member.registered_by,
-        branch_id: profile.branch_id,
-        card_issued: cardIssued || false,
-        card_payment_mode: cardIssued ? cardPaymentMode : null,
-        card_returned: false,
-        locker_assigned: lockerAssigned || false,
-        locker_payment_mode: lockerAssigned ? lockerPaymentMode : null,
-        locker_number: member.locker_number || null
+        expiry_date: member.expiry_date,
+        card_issued: cardIssued,
+        card_payment_mode: cardIssued ? cardPaymentMode : member.card_payment_mode,
+        locker_assigned: lockerAssigned,
+        locker_payment_mode: lockerAssigned ? lockerPaymentMode : member.locker_payment_mode,
+        locker_number: member.locker_number,
+        seat_no: seatNo
       })
+      .eq('id', member.id)
       .select()
       .single();
 
     if (memberError) {
-      console.error("Error registering member:", memberError);
+      console.error("Error updating member:", memberError);
       return;
     }
 
-    // Build transaction data with optional split payment fields
-    const transactionData: any = {
-      type: TransactionType.MEMBERSHIP,
-      amount,
-      description: `New Membership (${member.subscription_plan} - ${member.daily_access_hours}) - ${member.full_name}`,
-      branch_id: profile.branch_id,
-      member_id: newMember.id,
-      status: 'COMPLETED',
-      payment_mode: paymentMode
+    // Transactions
+    let allNewTransactions: Transaction[] = [];
+
+    // Membership Plan Transaction
+    if (amount > 0 || (cardIssued && !member.card_issued) || (lockerAssigned && !member.locker_assigned)) {
+      // We might want to separate the base membership fee from extras if logic requires, 
+      // but for now creating one main transaction for the membership plan amount is standard unless split.
+      // Wait, the amount passed in includes everything? MembershipForm calculates total.
+      // We should break it down if possible or log as one. Current logic in MembershipForm returns total 'amount'.
+      // But we likely want separate transactions for accounting if possible, or one detailed one.
+      // The previous implementation created separate transactions for Card and Locker.
+      // MembershipForm returns total amount. It also passes flags.
+
+      // Let's recalculate specific amounts for record keeping if needed, or just log the main amount minus extras?
+      // A safer bet is to log the main membership amount as MEMBERSHIP type.
+      // And extras as CARD/LOCKER types.
+
+      // However, the `amount` param from MembershipForm includes everything. 
+      // We need to deduct card/locker fees to get the base membership fee?
+      // Or we can rely on the fact that we can just log the specific items separate and the main one separate.
+      // BUT `amount` is the total user paid.
+
+      let planAmount = amount;
+      if (cardIssued && !member.card_issued) planAmount -= 100;
+      if (lockerAssigned && !member.locker_assigned && lockerPaymentMode !== 'INCLUDED') planAmount -= 200;
+
+      if (planAmount > 0) {
+        const txData: any = {
+          type: TransactionType.MEMBERSHIP,
+          amount: planAmount,
+          description: `Membership (${member.subscription_plan}) - ${member.full_name}`,
+          branch_id: profile.branch_id,
+          member_id: member.id,
+          status: 'COMPLETED',
+          payment_mode: paymentMode
+        };
+        if (paymentMode === 'SPLIT') {
+          // Split logic is complex if it covers multiple items. 
+          // For simplicity, we assign the split to the main transaction and mark others as CASH/UPI as per their specific flags.
+          // But MembershipForm has one global payment mode for the plan+extras? 
+          // MembershipForm has `cardPaymentMode` and `lockerPaymentMode`. 
+          // The main `paymentMode` applies to the Plan.
+          txData.cash_amount = cashAmount;
+          txData.upi_amount = upiAmount;
+        }
+
+        const { data: memTx } = await supabase.from('transactions').insert(txData).select().single();
+        if (memTx) allNewTransactions.push(memTx);
+      }
+
+      // Card Transaction
+      if (cardIssued && !member.card_issued) {
+        const { data: cardTx } = await supabase.from('transactions').insert({
+          type: TransactionType.CARD,
+          amount: 100,
+          description: `Card Fee - ${member.full_name}`,
+          branch_id: profile.branch_id,
+          member_id: member.id,
+          status: 'COMPLETED',
+          payment_mode: cardPaymentMode || 'CASH'
+        }).select().single();
+        if (cardTx) allNewTransactions.push(cardTx);
+      }
+
+      // Locker Transaction
+      if (lockerAssigned && !member.locker_assigned && lockerPaymentMode !== 'INCLUDED') {
+        const { data: lockTx } = await supabase.from('transactions').insert({
+          type: TransactionType.LOCKER,
+          amount: 200,
+          description: `Locker Fee - ${member.full_name}`,
+          branch_id: profile.branch_id,
+          member_id: member.id,
+          status: 'COMPLETED',
+          payment_mode: lockerPaymentMode || 'CASH'
+        }).select().single();
+        if (lockTx) allNewTransactions.push(lockTx);
+      }
+    }
+
+    // Fallback if RLS blocks reading the updated row
+    const finalMember = updatedMember || {
+      ...member,
+      subscription_plan: member.subscription_plan,
+      daily_access_hours: member.daily_access_hours,
+      expiry_date: member.expiry_date,
+      card_issued: cardIssued !== undefined ? cardIssued : member.card_issued,
+      card_payment_mode: cardIssued ? cardPaymentMode : member.card_payment_mode,
+      locker_assigned: lockerAssigned !== undefined ? lockerAssigned : member.locker_assigned,
+      locker_payment_mode: lockerAssigned ? lockerPaymentMode : member.locker_payment_mode,
+      locker_number: member.locker_number,
+      seat_no: seatNo !== undefined ? seatNo : member.seat_no
     };
 
-    // Add split payment amounts if applicable
-    if (paymentMode === 'SPLIT' && cashAmount !== undefined && upiAmount !== undefined) {
-      transactionData.cash_amount = cashAmount;
-      transactionData.upi_amount = upiAmount;
-    }
+    setAppState(prev => ({
+      ...prev,
+      members: prev.members.map(m => m.id === finalMember.id ? finalMember : m),
+      transactions: [...prev.transactions, ...allNewTransactions]
+    }));
 
-    // Insert Membership Transaction
-    try {
-      const { data: newTx, error: txError } = await supabase
-        .from('transactions')
-        .insert(transactionData)
-        .select()
-        .single();
-
-      if (txError) throw txError;
-
-      let allNewTransactions = [newTx];
-
-      // If card is issued, create a separate card transaction
-      if (cardIssued && cardPaymentMode) {
-        const cardTxData = {
-          type: TransactionType.CARD,
-          amount: 100, // Fixed card price
-          description: `Library Card Issued - ${member.full_name}`,
-          branch_id: profile.branch_id,
-          member_id: newMember.id,
-          status: 'COMPLETED',
-          payment_mode: cardPaymentMode
-        };
-
-        const { data: cardTx, error: cardTxError } = await supabase
-          .from('transactions')
-          .insert(cardTxData)
-          .select()
-          .single();
-
-        if (cardTxError) {
-          console.error("Error creating card transaction:", cardTxError);
-          // Don't fail the whole registration, just log the error
-        } else if (cardTx) {
-          allNewTransactions.push(cardTx);
-        }
-      }
-
-      // If locker is assigned and not free, create locker transaction
-      if (lockerAssigned && lockerPaymentMode !== 'INCLUDED' && lockerPaymentMode) {
-        const lockerTxData = {
-          type: TransactionType.LOCKER,
-          amount: 200, // Fixed locker price
-          description: `Locker Assigned - ${member.full_name}`,
-          branch_id: profile.branch_id,
-          member_id: newMember.id,
-          status: 'COMPLETED',
-          payment_mode: lockerPaymentMode
-        };
-
-        const { data: lockerTx, error: lockerTxError } = await supabase
-          .from('transactions')
-          .insert(lockerTxData)
-          .select()
-          .single();
-
-        if (lockerTxError) {
-          console.error("Error creating locker transaction:", lockerTxError);
-        } else if (lockerTx) {
-          allNewTransactions.push(lockerTx);
-        }
-      }
-
-      // Update Local State (Optimistic or Re-fetch)
-      if (newMember) {
-        setAppState(prev => ({
-          ...prev,
-          members: [...prev.members.filter(m => m.id !== newMember.id), newMember], // Remove existing if present (update case)
-          transactions: [...prev.transactions, ...allNewTransactions]
-        }));
-      }
-      setActiveTab('dashboard');
-    } catch (err: any) {
-      console.error("Error creating transaction (Rollback initiated):", err);
-      // ROLLBACK: Delete the member we just created because payment failed
-      await supabase.from('members').delete().eq('id', newMember.id);
-      alert(`Registration Failed: ${err?.message || 'Payment record could not be saved. Please try again.'}`);
-    }
+    setSelectedMemberForMembership(null);
   };
 
   const handleRenewMember = async (member: Member) => {
-    setRenewingMember(member);
-    setActiveTab('register');
+    setSelectedMemberForMembership(member);
+    setActiveTab('registered_members');
   };
 
   // Issue card to an existing member (from Dashboard)
@@ -875,18 +929,21 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
       }
 
       if (activeTab === 'manage_snacks') {
-        return <SnackManager />;
+        // Now handled by Receptionist or redundant for Admin - Removed from here
+        return <div className="p-8 text-center text-slate-500">Manage Snacks is now a branch-specific feature.</div>;
       }
 
       if (adminViewBranchId) {
         const targetBranchMembers = appState.members.filter(m => m.branch_id === adminViewBranchId);
         const targetBranchTransactions = appState.transactions.filter(t => t.branch_id === adminViewBranchId);
+        const targetBranchSnacks = appState.snacks.filter(s => s.branch_id === adminViewBranchId);
         const targetBranch = appState.branches.find(b => b.id === adminViewBranchId);
 
         return (
           <Dashboard
             members={targetBranchMembers}
             transactions={targetBranchTransactions}
+            snacks={targetBranchSnacks}
             onRenew={() => { }}
             onBack={() => setAdminViewBranchId(null)}
             readOnly={true}
@@ -902,6 +959,7 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
     // Reception View
     const branchMembers = appState.members.filter(m => m.branch_id === profile.branch_id);
     const branchTransactions = appState.transactions.filter(t => t.branch_id === profile.branch_id);
+    const branchSnacks = appState.snacks.filter(s => s.branch_id === profile.branch_id);
 
     // Calculate cards available for this branch
     const today = new Date();
@@ -944,22 +1002,38 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
     };
 
     switch (activeTab) {
-      case 'register':
+      case 'new_registration':
         return (
-          <MemberRegistration
+          <RegistrationForm
             branchId={profile.branch_id || ''}
             branchName={currentBranch?.name || ''}
-            onRegister={(m, a, p, cashAmt, upiAmt, cardIssued, cardPaymentMode, lockerAssigned, lockerPaymentMode) => {
-              handleMemberRegistration(m, a, p, cashAmt, upiAmt, cardIssued, cardPaymentMode, lockerAssigned, lockerPaymentMode);
-              setRenewingMember(null);
-            }}
-            initialData={renewingMember}
-            cardsAvailable={cardsAvailable}
-            lockersAvailable={lockersAvailable}
+            onRegisterSuccess={handleRegistrationSuccess}
           />
         );
+      case 'registered_members':
+        if (selectedMemberForMembership) {
+          return (
+            <MembershipForm
+              member={selectedMemberForMembership}
+              branchId={profile.branch_id || ''}
+              onMembershipComplete={handleMembershipComplete}
+              cardsAvailable={cardsAvailable}
+              lockersAvailable={lockersAvailable}
+              onCancel={() => setSelectedMemberForMembership(null)}
+            />
+          );
+        }
+        return (
+          <RegisteredMembers
+            members={branchMembers}
+            onAddMembership={(m) => setSelectedMemberForMembership(m)}
+            branchName={currentBranch?.name || ''}
+          />
+        );
+      case 'manage_snacks':
+        return <SnackManager branchId={profile.branch_id || ''} />;
       case 'snacks':
-        return <SnackShop onSale={handleSnackSale} />;
+        return <SnackShop onSale={handleSnackSale} branchId={profile.branch_id || ''} />;
       case 'cards':
         return (
           <CardManagement
@@ -984,12 +1058,13 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
             <Dashboard
               members={branchMembers}
               transactions={branchTransactions}
+              snacks={branchSnacks}
               onRenew={handleRenewMember}
               onIssueCard={handleIssueCard}
               onReturnCard={handleReturnCard}
               onAssignLocker={handleAssignLocker}
-              hideStats={true}
               onDeleteMembers={handleDeleteMembers}
+              hideStats={true}
             />
           </div>
         );
