@@ -902,7 +902,8 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
     }));
   };
 
-  const renderContent = () => {
+  // --- Content Renderer (Returns ONLY the active component) ---
+  const renderInnerContent = () => {
     if (profileError) {
       return (
         <div className="p-8 flex flex-col items-center justify-center h-full text-red-600">
@@ -939,11 +940,6 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
         return <ReceptionistList branches={appState.branches} />;
       }
 
-      if (activeTab === 'manage_snacks') {
-        // Now handled by Receptionist or redundant for Admin - Removed from here
-        return <div className="p-8 text-center text-slate-500">Manage Snacks is now a branch-specific feature.</div>;
-      }
-
       if (adminViewBranchId) {
         const targetBranchMembers = appState.members.filter(m => m.branch_id === adminViewBranchId);
         const targetBranchTransactions = appState.transactions.filter(t => t.branch_id === adminViewBranchId);
@@ -967,12 +963,12 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
       return <AdminView state={appState} onViewBranch={setAdminViewBranchId} />;
     }
 
-    // Reception View
+    // --- Reception View Data & Handlers ---
     const branchMembers = appState.members.filter(m => m.branch_id === profile.branch_id);
     const branchTransactions = appState.transactions.filter(t => t.branch_id === profile.branch_id);
     const branchSnacks = appState.snacks.filter(s => s.branch_id === profile.branch_id);
 
-    // Calculate cards available for this branch
+    // Calculate cards available
     const today = new Date();
     const threeDaysFromNow = new Date(today);
     threeDaysFromNow.setDate(today.getDate() + 3);
@@ -999,33 +995,25 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
     const totalLockers = Number(currentBranch?.total_lockers) || 0;
     const lockersInUse = branchMembers.filter(m => {
       const status = getMemberStatus(m.expiry_date);
-      // Locker is freed when expired, so only count Active/Expiring
       return m.locker_assigned && (status === 'ACTIVE' || status === 'EXPIRING');
     }).length;
     const lockersAvailable = Math.max(0, totalLockers - lockersInUse);
 
-
-
     const handleOldMemberEntry = async (personal: any, membership: any, allocations: any) => {
       if (!profile?.branch_id) return;
 
-      // 1. Calculate Dates
       const today = new Date();
       const daysPassed = parseInt(membership.daysPassed) || 0;
-
-      // Calculate start date: today - daysPassed
       const startDate = new Date(today);
       startDate.setDate(today.getDate() - daysPassed);
 
-      let durationDays = membership.durationDays || 30; // Default 1 Month or Custom
+      let durationDays = membership.durationDays || 30;
       if (membership.plan === SubscriptionPlan.MONTH_3) durationDays = 90;
       if (membership.plan === SubscriptionPlan.MONTH_6) durationDays = 180;
-      // custom not handled, fallback to 30
 
       const expiryDate = new Date(startDate);
       expiryDate.setDate(startDate.getDate() + durationDays);
 
-      // 2. Prepare Member Object
       const newMemberData: any = {
         full_name: personal.fullName,
         email: personal.email,
@@ -1035,14 +1023,10 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
         join_date: personal.joinDate,
         study_purpose: personal.studyPurpose,
         registered_by: session.user.email,
-
-        // Membership
         subscription_plan: membership.plan,
         daily_access_hours: membership.accessHours,
         current_plan_start_date: startDate.toISOString(),
         expiry_date: expiryDate.toISOString(),
-
-        // Allocations
         seat_no: allocations.seatNo,
         locker_assigned: allocations.lockerAssigned,
         locker_number: allocations.lockerNumber,
@@ -1052,7 +1036,6 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
         card_returned: allocations.cardReturned
       };
 
-      // 3. Insert to DB
       const { data: insertedMember, error } = await supabase
         .from('members')
         .insert(newMemberData)
@@ -1066,159 +1049,146 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
       }
 
       if (insertedMember) {
-        // Refresh members
         const { data: allMembers } = await supabase.from('members').select('*');
         if (allMembers) {
-          setAppState(prev => ({
-            ...prev,
-            members: allMembers
-          }));
+          setAppState(prev => ({ ...prev, members: allMembers }));
         }
-
         alert("Old Member Record Added Successfully!");
         setActiveTab('registered_members');
       }
     };
 
-    const handleBranchUpdate = (updatedBranch: Branch) => {
-      setAppState(prev => ({
-        ...prev,
-        branches: prev.branches.map(b => b.id === updatedBranch.id ? updatedBranch : b)
-      }));
-    };
-
-    const renderContent = () => {
-      switch (activeTab) {
-        case 'new_registration':
+    // Reception View Logic
+    switch (activeTab) {
+      case 'new_registration':
+        return (
+          <RegistrationForm
+            branchId={profile.branch_id || ''}
+            branchName={currentBranch?.name || ''}
+            onRegisterSuccess={handleRegistrationSuccess}
+          />
+        );
+      case 'old_member_entry':
+        return (
+          <OldMemberEntry
+            branchId={profile.branch_id || ''}
+            onComplete={handleOldMemberEntry}
+          />
+        );
+      case 'registered_members':
+        if (selectedMemberForMembership) {
           return (
-            <RegistrationForm
+            <MembershipForm
+              member={selectedMemberForMembership}
               branchId={profile.branch_id || ''}
-              branchName={currentBranch?.name || ''}
-              onRegisterSuccess={handleRegistrationSuccess}
+              onMembershipComplete={handleMembershipComplete}
+              cardsAvailable={cardsAvailable}
+              lockersAvailable={lockersAvailable}
+              onCancel={() => setSelectedMemberForMembership(null)}
             />
           );
-        case 'old_member_entry':
-          return (
-            <OldMemberEntry
-              branchId={profile.branch_id || ''}
-              onComplete={handleOldMemberEntry}
-            />
-          );
-        case 'registered_members':
-          if (selectedMemberForMembership) {
-            return (
-              <MembershipForm
-                member={selectedMemberForMembership}
-                branchId={profile.branch_id || ''}
-                onMembershipComplete={handleMembershipComplete}
-                cardsAvailable={cardsAvailable}
-                lockersAvailable={lockersAvailable}
-                onCancel={() => setSelectedMemberForMembership(null)}
-              />
-            );
-          }
-          return (
-            <RegisteredMembers
+        }
+        return (
+          <RegisteredMembers
+            members={branchMembers}
+            onAddMembership={(m) => setSelectedMemberForMembership(m)}
+            branchName={currentBranch?.name || ''}
+            onDeleteMember={(id) => handleDeleteMembers([id])}
+          />
+        );
+      case 'manage_snacks':
+        return <SnackManager branchId={profile.branch_id || ''} />;
+      case 'snacks':
+        return <SnackShop onSale={handleSnackSale} branchId={profile.branch_id || ''} />;
+      case 'cards':
+        return (
+          <CardManagement
+            members={branchMembers}
+            branch={currentBranch || null}
+            onBranchUpdate={handleBranchUpdate}
+          />
+        );
+      case 'lockers':
+        return (
+          <LockerManagement
+            members={branchMembers}
+            branch={currentBranch || null}
+            onBranchUpdate={handleBranchUpdate}
+          />
+        );
+      case 'dashboard':
+      default:
+        return (
+          <div>
+            <Dashboard
               members={branchMembers}
-              onAddMembership={(m) => setSelectedMemberForMembership(m)}
-              branchName={currentBranch?.name || ''}
-              onDeleteMember={(id) => handleDeleteMembers([id])}
+              transactions={branchTransactions}
+              snacks={branchSnacks}
+              onRenew={handleRenewMember}
+              onIssueCard={handleIssueCard}
+              onReturnCard={handleReturnCard}
+              onAssignLocker={handleAssignLocker}
+              onDeleteMembers={handleDeleteMembers}
+              hideStats={true}
             />
-          );
-        case 'manage_snacks':
-          return <SnackManager branchId={profile.branch_id || ''} />;
-        case 'snacks':
-          return <SnackShop onSale={handleSnackSale} branchId={profile.branch_id || ''} />;
-        case 'cards':
-          return (
-            <CardManagement
-              members={branchMembers}
-              branch={currentBranch || null}
-              onBranchUpdate={handleBranchUpdate}
-            />
-          );
-
-        case 'lockers':
-          return (
-            <LockerManagement
-              members={branchMembers}
-              branch={currentBranch || null}
-              onBranchUpdate={handleBranchUpdate}
-            />
-          );
-        case 'dashboard':
-        default:
-          return (
-            <div>
-              <Dashboard
-                members={branchMembers}
-                transactions={branchTransactions}
-                snacks={branchSnacks}
-                onRenew={handleRenewMember}
-                onIssueCard={handleIssueCard}
-                onReturnCard={handleReturnCard}
-                onAssignLocker={handleAssignLocker}
-                onDeleteMembers={handleDeleteMembers}
-                hideStats={true}
-              />
-            </div>
-          );
-      }
-    };
-
-    return (
-      <div className="flex min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50">
-        <Sidebar
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          currentRole={profile?.role || 'RECEPTION'}
-          currentBranchName={currentBranch?.name}
-          onLogout={handleLogout}
-          isOpen={isSidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-        />
-
-        <main className="md:ml-64 flex-1 p-4 md:p-8 w-full transition-all duration-300">
-          <div className="md:hidden flex items-center justify-between mb-6 bg-white p-4 -m-4 shadow-sm sticky top-0 z-30">
-            <button onClick={() => setSidebarOpen(true)} className="text-slate-600 hover:text-indigo-600 p-1">
-              <Menu size={24} />
-            </button>
-            <div className="flex items-center gap-2">
-              <img src="/logo.svg" alt="Logo" className="h-20 w-20" />
-              <span className="font-bold text-lg text-indigo-600">Achievers Library</span>
-            </div>
-            <div className="w-8" />
           </div>
-
-          <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 md:mb-8 gap-3 mt-4 md:mt-0">
-            <h1 className="text-2xl font-bold text-slate-900">
-              {activeTab === 'register' && 'Registration'}
-              {activeTab === 'snacks' && 'Point of Sale'}
-              {activeTab === 'dashboard' && (profile?.role === 'ADMIN' ? 'Admin Office Dashboard' : 'Branch Analytics')}
-              {activeTab === 'create_branch' && 'Branch Management'}
-
-              {activeTab === 'receptionists' && 'Receptionist Directory'}
-              {activeTab === 'manage_snacks' && 'Menu Management'}
-            </h1>
-
-            <div className="flex items-center space-x-3 self-start md:self-auto">
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2 bg-white text-red-600 border border-red-200 rounded-lg hover:bg-red-50 hover:border-red-300 transition-all shadow-sm flex items-center gap-2 font-medium mr-3"
-              >
-                <LogOut size={18} />
-                Logout
-              </button>
-            </div>
-          </div>
-
-          <div className="animate-fade-in pb-10 md:pb-0">{renderContent()}</div>
-        </main>
-      </div>
-    );
+        );
+    }
   };
 
-  return renderContent();
+  // --- Main Layout Render ---
+  return (
+    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50">
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        currentRole={profile?.role || 'RECEPTION'}
+        currentBranchName={currentBranch?.name}
+        onLogout={handleLogout}
+        isOpen={isSidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+
+      <main className="md:ml-64 flex-1 p-4 md:p-8 transition-all duration-300">
+        <div className="md:hidden flex items-center justify-between mb-6 bg-white p-4 -m-4 shadow-sm sticky top-0 z-30">
+          <button onClick={() => setSidebarOpen(true)} className="text-slate-600 hover:text-indigo-600 p-1">
+            <Menu size={24} />
+          </button>
+          <div className="flex items-center gap-2">
+            <img src="/logo.svg" alt="Logo" className="h-20 w-20" />
+            <span className="font-bold text-lg text-indigo-600">Achievers Library</span>
+          </div>
+          <div className="w-8" />
+        </div>
+
+        <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 md:mb-8 gap-3 mt-4 md:mt-0">
+          <h1 className="text-2xl font-bold text-slate-900">
+            {activeTab === 'register' && 'Registration'}
+            {activeTab === 'snacks' && 'Point of Sale'}
+            {activeTab === 'dashboard' && (profile?.role === 'ADMIN' ? 'Admin Office Dashboard' : 'Branch Analytics')}
+            {activeTab === 'create_branch' && 'Branch Management'}
+
+            {activeTab === 'receptionists' && 'Receptionist Directory'}
+            {activeTab === 'manage_snacks' && 'Menu Management'}
+          </h1>
+
+          <div className="flex items-center space-x-3 self-start md:self-auto">
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 bg-white text-red-600 border border-red-200 rounded-lg hover:bg-red-50 hover:border-red-300 transition-all shadow-sm flex items-center gap-2 font-medium mr-3"
+            >
+              <LogOut size={18} />
+              Logout
+            </button>
+          </div>
+        </div>
+
+        <div className="animate-fade-in pb-10 md:pb-0">
+          {renderInnerContent()}
+        </div>
+      </main>
+    </div>
+  );
 };
 
 export default AppWrapper;

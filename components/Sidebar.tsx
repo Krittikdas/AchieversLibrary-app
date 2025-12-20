@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, UserPlus, Coffee, Receipt, Building2, LogOut, X, Users, UtensilsCrossed, CreditCard, Lock, Clock } from 'lucide-react';
+import { LayoutDashboard, UserPlus, Coffee, Receipt, Building2, X, Users, UtensilsCrossed, CreditCard, Lock, Clock } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;

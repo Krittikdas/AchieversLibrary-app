@@ -226,13 +226,8 @@ export const AdminView: React.FC<AdminViewProps> = ({ state, onViewBranch }) => 
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-200 pb-6 gap-4">
-        <div>
-          <h2 className="text-3xl font-bold text-slate-900">Admin Office Command Center</h2>
-          <p className="text-slate-500 mt-1">Overview of all {state.branches.length} connected library branches.</p>
-        </div>
-
-        {/* Filter Controls */}
+      {/* Filter Controls */}
+      <div className="flex flex-col md:flex-row justify-end items-center border-b border-slate-200 pb-6 gap-4">
         <div className="flex flex-wrap items-center gap-3 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
           <div className="flex items-center px-2 text-slate-500">
             <Filter size={18} className="mr-2" />
