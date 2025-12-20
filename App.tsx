@@ -95,11 +95,13 @@ const LoginPage: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
   useEffect(() => {
     // Fetch branches for Receptionist dropdown
     const fetchBranches = async () => {
-      const { data, error } = await supabase.from('branches').select('*');
+      // Select only public fields needed for the dropdown
+      const { data, error } = await supabase.from('branches').select('id, name, location');
       if (data) {
         setBranches(data);
         if (data.length > 0) setSelectedBranchId(data[0].id);
       }
+      if (error) console.error("Error fetching branches:", error);
     };
     fetchBranches();
   }, []);
@@ -155,11 +157,20 @@ const LoginPage: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
 
       if (data.user) {
         // Check profile role
-        const { data: profile } = await supabase
+        console.log('Attempting to fetch profile for user:', data.user.id);
+        const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', data.user.id)
           .single();
+
+        console.log('Profile query result:', { profile, profileError });
+        if (profileError) {
+          console.error('Profile query failed:', profileError);
+          setError(`Database error: ${profileError.message} (Code: ${profileError.code})`);
+          setLoading(false);
+          return;
+        }
 
         if (profile) {
           // Strict Role Check
@@ -287,7 +298,7 @@ const LoginPage: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
                   className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-200"
                 >
                   {branches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
+                    <option key={b.id} value={b.id}>{b.name} ({b.location})</option>
                   ))}
                 </select>
               </div>
@@ -871,6 +882,10 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
   };
 
   const handleDeleteBranch = async (branchId: string) => {
+    // 1. Delete the associated receptionist user first
+    await supabase.rpc('delete_receptionist_by_branch', { branch_id_input: branchId });
+
+    // 2. Delete the branch
     const { error } = await supabase.from('branches').delete().eq('id', branchId);
     if (!error) {
       setAppState(prev => ({
@@ -1019,21 +1034,21 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
         email: personal.email,
         phone: personal.phone,
         address: personal.address,
-        branch_id: profile.branch_id,
-        join_date: personal.joinDate,
         study_purpose: personal.studyPurpose,
-        registered_by: session.user.email,
+        join_date: startDate.toISOString(),
+        expiry_date: expiryDate.toISOString(),
         subscription_plan: membership.plan,
         daily_access_hours: membership.accessHours,
-        current_plan_start_date: startDate.toISOString(),
-        expiry_date: expiryDate.toISOString(),
+        registered_by: profile.full_name || 'Admin',
+        branch_id: profile.branch_id,
         seat_no: allocations.seatNo,
-        locker_assigned: allocations.lockerAssigned,
-        locker_number: allocations.lockerNumber,
-        locker_payment_mode: allocations.lockerAssigned ? allocations.lockerPaymentMode : null,
+
+        // Allocations
         card_issued: allocations.cardIssued,
-        card_payment_mode: allocations.cardIssued ? allocations.cardPaymentMode : null,
-        card_returned: allocations.cardReturned
+        card_payment_mode: allocations.cardIssued ? allocations.cardPaymentMode : undefined,
+        locker_assigned: allocations.lockerAssigned,
+        locker_payment_mode: allocations.lockerAssigned ? allocations.lockerPaymentMode : undefined,
+        locker_number: allocations.lockerAssigned ? allocations.lockerNumber : undefined
       };
 
       const { data: insertedMember, error } = await supabase
@@ -1049,11 +1064,74 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
       }
 
       if (insertedMember) {
-        const { data: allMembers } = await supabase.from('members').select('*');
-        if (allMembers) {
-          setAppState(prev => ({ ...prev, members: allMembers }));
+        // 4. Create Transaction Record for the Old Membership
+        if (membership.paymentAmount && Number(membership.paymentAmount) > 0) {
+          const { error: txnError } = await supabase
+            .from('transactions')
+            .insert({
+              type: 'MEMBERSHIP',
+              amount: Number(membership.paymentAmount),
+              payment_mode: membership.paymentMode || 'CASH',
+              status: 'COMPLETED',
+              member_id: insertedMember.id,
+              branch_id: profile.branch_id,
+              timestamp: startDate.toISOString(), // Backdated to when they supposedly joined
+              description: `Old Membership Entry: ${membership.plan} (${membership.daysPassed} days ago)`
+            });
+
+          if (txnError) {
+            console.error("Error creating old transaction:", txnError);
+            // We don't block the UI here, but we log it.
+          }
         }
-        alert("Old Member Record Added Successfully!");
+
+        // 5. Create Transaction for Card (Standard ₹100)
+        if (allocations.cardIssued) {
+          const { error: cardTxnError } = await supabase
+            .from('transactions')
+            .insert({
+              type: 'CARD',
+              amount: 100,
+              payment_mode: allocations.cardPaymentMode || 'CASH',
+              status: 'COMPLETED',
+              member_id: insertedMember.id,
+              branch_id: profile.branch_id,
+              timestamp: startDate.toISOString(), // Backdated
+              description: `Old Member Card Issue`
+            });
+          if (cardTxnError) console.error("Error creating card transaction:", cardTxnError);
+        }
+
+        // 6. Create Transaction for Locker (Standard ₹200)
+        if (allocations.lockerAssigned && allocations.lockerPaymentMode !== 'INCLUDED') {
+          const { error: lockerTxnError } = await supabase
+            .from('transactions')
+            .insert({
+              type: 'LOCKER',
+              amount: 200,
+              payment_mode: allocations.lockerPaymentMode || 'CASH',
+              status: 'COMPLETED',
+              member_id: insertedMember.id,
+              branch_id: profile.branch_id,
+              timestamp: startDate.toISOString(), // Backdated
+              description: `Old Member Locker Issue: ${allocations.lockerNumber}`
+            });
+          if (lockerTxnError) console.error("Error creating locker transaction:", lockerTxnError);
+        }
+
+        // Refresh members and transactions
+        const { data: allMembers } = await supabase.from('members').select('*');
+        const { data: allTxns } = await supabase.from('transactions').select('*'); // Refresh txns too
+
+        if (allMembers) {
+          setAppState(prev => ({
+            ...prev,
+            members: allMembers,
+            transactions: allTxns || prev.transactions
+          }));
+        }
+
+        alert("Old Member Record & Transaction Added Successfully!");
         setActiveTab('registered_members');
       }
     };

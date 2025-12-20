@@ -121,6 +121,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
     const dailyRevenue = calculateRevenue(1);
     const weeklyRevenue = calculateRevenue(7);
     const monthlyRevenue = calculateRevenue(30);
+    const totalRevenue = calculateRevenue(36500); // All time (100 years)
 
     // --- Snack Revenue Calculations ---
     const calculateSnackRevenue = (days: number) => {
@@ -329,8 +330,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
                     </div>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                    <p className="text-sm font-medium text-slate-500 mb-1">Monthly Revenue</p>
-                    <h3 className="text-3xl font-bold text-slate-700">₹{monthlyRevenue}</h3>
+                    <p className="text-sm font-medium text-slate-500 mb-1">Total Revenue</p>
+                    <h3 className="text-3xl font-bold text-slate-700">₹{totalRevenue}</h3>
+                    <p className="text-xs text-slate-400 mt-1">All Time</p>
                 </div>
             </div>
 

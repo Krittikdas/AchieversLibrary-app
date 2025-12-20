@@ -18,7 +18,6 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
         phone: '',
         email: '',
         address: '',
-        joinDate: new Date().toISOString().split('T')[0], // Defaults to today, user puts past date
         studyPurpose: 'General Study'
     });
 
@@ -30,7 +29,9 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
         // Custom fields matching MembershipForm
         customDurationValue: '',
         customDurationUnit: 'DAYS' as 'DAYS' | 'MONTHS',
-        customAccessHours: ''
+        customAccessHours: '',
+        paymentAmount: '',
+        paymentMode: 'CASH' as 'CASH' | 'UPI'
     });
 
     // 3. Allocations
@@ -38,7 +39,6 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
         seatNo: '',
         cardIssued: false,
         cardPaymentMode: 'CASH' as 'CASH' | 'UPI',
-        cardReturned: false,
         lockerAssigned: false,
         lockerNumber: '',
         lockerPaymentMode: 'CASH' as 'CASH' | 'UPI'
@@ -125,16 +125,7 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
                                 onChange={e => setPersonal({ ...personal, email: e.target.value })}
                             />
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Original Join Date</label>
-                            <input
-                                type="date"
-                                required
-                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-200 focus:outline-none"
-                                value={personal.joinDate}
-                                onChange={e => setPersonal({ ...personal, joinDate: e.target.value })}
-                            />
-                        </div>
+
                         <div className="md:col-span-2">
                             <label className="block text-sm font-medium text-slate-700 mb-1">Address</label>
                             <input
@@ -227,6 +218,28 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
                             />
                             <p className="text-xs text-slate-500 mt-1">This will backdate the start date.</p>
                         </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Membership Fee (₹)</label>
+                            <input
+                                type="number"
+                                placeholder="Amount Paid"
+                                required
+                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+                                value={membership.paymentAmount}
+                                onChange={e => setMembership({ ...membership, paymentAmount: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Payment Mode</label>
+                            <select
+                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+                                value={membership.paymentMode}
+                                onChange={e => setMembership({ ...membership, paymentMode: e.target.value as any })}
+                            >
+                                <option value="CASH">Cash</option>
+                                <option value="UPI">UPI</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
 
@@ -277,6 +290,7 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
                                     >
                                         <option value="CASH">Paid via CASH</option>
                                         <option value="UPI">Paid via UPI</option>
+                                        <option value="INCLUDED">Included (Free)</option>
                                     </select>
                                 </>
                             )}
@@ -303,16 +317,6 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
                                         <option value="CASH">Paid via CASH</option>
                                         <option value="UPI">Paid via UPI</option>
                                     </select>
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            type="checkbox"
-                                            id="cardReturned"
-                                            className="w-4 h-4 text-indigo-600 rounded"
-                                            checked={allocations.cardReturned}
-                                            onChange={e => setAllocations({ ...allocations, cardReturned: e.target.checked })}
-                                        />
-                                        <label htmlFor="cardReturned" className="text-sm text-slate-600">Already Returned?</label>
-                                    </div>
                                 </div>
                             )}
                         </div>

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { AppState, Branch, Member, Transaction } from '../types';
 import { MOCK_BRANCHES } from '../constants';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -422,41 +423,34 @@ export const AdminBranchCreation: React.FC<AdminBranchCreationProps> = ({ branch
     setLoading(true);
 
     try {
-      // 1. Create Branch in DB
-      const { data: branchData, error: branchError } = await supabase
-        .from('branches')
-        .insert({ name, location, email, total_cards: parseInt(totalCards, 10) || 0, total_lockers: parseInt(totalLockers, 10) || 0 })
-        .select()
-        .single();
-
-      if (branchError) throw branchError;
-
-      // 2. Call Edge Function to create Receptionist User
-      const { data: funcData, error: funcError } = await supabase.functions.invoke('create-receptionist', {
-        body: {
-          email,
-          password,
-          branchId: branchData.id,
-          action: 'CREATE'
-        }
+      // Call the Secure Database Function (RPC)
+      // This handles Branch + User + Profile creation in one atomic transaction on the server
+      const { data, error: rpcError } = await supabase.rpc('create_branch_and_user', {
+        branch_name: name,
+        branch_email: email,
+        branch_password: password,
+        branch_location: location,
+        total_cards_input: parseInt(totalCards, 10) || 0,
+        total_lockers_input: parseInt(totalLockers, 10) || 0
       });
 
-      if (funcError || funcData?.error) {
-        // Rollback: Delete the branch we just created so we don't have "zombie" branches
-        console.error("Edge Function failed, rolling back branch creation...");
-        await supabase.from('branches').delete().eq('id', branchData.id);
-
-        if (funcError) {
-          console.error("Edge Function Error:", funcError);
-          throw new Error(funcError.message || 'Failed to create receptionist user');
-        }
-        if (funcData?.error) {
-          console.error("Edge Function Returned Error:", funcData.error);
-          throw new Error(funcData.error);
-        }
+      if (rpcError) {
+        console.error("RPC Error:", rpcError);
+        throw new Error(rpcError.message || 'Failed to create branch and user');
       }
 
-      onAddBranch(branchData);
+      // Success!
+      // We reconstruct the branch object optimistically to update the UI
+      const newBranch: Branch = {
+        id: data.branch_id,
+        name,
+        location,
+        email,
+        total_cards: parseInt(totalCards, 10) || 0,
+        total_lockers: parseInt(totalLockers, 10) || 0
+      };
+
+      onAddBranch(newBranch);
       setSuccess(`Branch "${name}" created successfully!`);
       setName('');
       setEmail('');
@@ -465,8 +459,15 @@ export const AdminBranchCreation: React.FC<AdminBranchCreationProps> = ({ branch
       setTotalCards('0');
       setTotalLockers('0');
       setTimeout(() => setSuccess(''), 3000);
+
     } catch (err: any) {
-      setError(err.message || 'Failed to create branch');
+      console.error("Creation Error:", err);
+      // Detailed error message handling
+      let msg = err.message || 'Failed to create branch';
+      if (msg.includes("Email address is invalid")) {
+        msg = "Invalid email format. Please check for spaces or typos.";
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }
