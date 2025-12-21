@@ -13,7 +13,7 @@ import { CardManagement } from './components/CardManagement';
 import { LockerManagement } from './components/LockerManagement';
 import { MOCK_BRANCHES } from './constants';
 import { AppState, Member, Transaction, TransactionType, Branch, Profile, SubscriptionPlan } from './types';
-import { Menu, LogOut, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Menu, LogOut, Loader2, Eye, EyeOff, CheckCircle, XCircle, X } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 // --- Login Page Component ---
@@ -418,6 +418,13 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
     transactions: [],
     snacks: []
   });
+
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -1043,6 +1050,10 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
         branch_id: profile.branch_id,
         seat_no: allocations.seatNo,
 
+        // Adding missing fields
+        current_plan_start_date: startDate.toISOString(),
+        days_passed: daysPassed,
+
         // Allocations
         card_issued: allocations.cardIssued,
         card_payment_mode: allocations.cardIssued ? allocations.cardPaymentMode : undefined,
@@ -1059,7 +1070,12 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
 
       if (error) {
         console.error("Error adding old member:", error);
-        alert("Failed to add member. Check console.");
+
+        if (error.code === '23505') { // Unique constraint violation
+          showNotification("Member already exists! Check Email, Phone, or Seat Number.", 'error');
+        } else {
+          showNotification(`Failed to add member: ${error.message}`, 'error');
+        }
         return;
       }
 
@@ -1131,7 +1147,15 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
           }));
         }
 
-        alert("Old Member Record & Transaction Added Successfully!");
+        if (allMembers) {
+          setAppState(prev => ({
+            ...prev,
+            members: allMembers,
+            transactions: allTxns || prev.transactions
+          }));
+        }
+
+        showNotification("Old Member Added Successfully!");
         setActiveTab('registered_members');
       }
     };
@@ -1227,7 +1251,19 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
         onClose={() => setSidebarOpen(false)}
       />
 
-      <main className="md:ml-64 flex-1 p-4 md:p-8 transition-all duration-300">
+      <main className="md:ml-64 flex-1 p-4 md:p-8 transition-all duration-300 relative">
+        {/* Toast Notification */}
+        {notification && (
+          <div className={`fixed top-4 right-4 z-50 animate-fade-in-down flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border ${notification.type === 'success' ? 'bg-white border-green-200 text-green-700' : 'bg-white border-red-200 text-red-700'
+            }`}>
+            {notification.type === 'success' ? <CheckCircle size={20} className="text-green-500" /> : <XCircle size={20} className="text-red-500" />}
+            <span className="font-medium">{notification.message}</span>
+            <button onClick={() => setNotification(null)} className="ml-2 text-slate-400 hover:text-slate-600">
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         <div className="md:hidden flex items-center justify-between mb-6 bg-white p-4 -m-4 shadow-sm sticky top-0 z-30">
           <button onClick={() => setSidebarOpen(true)} className="text-slate-600 hover:text-indigo-600 p-1">
             <Menu size={24} />

@@ -82,11 +82,7 @@ export const LockerManagement: React.FC<LockerManagementProps> = ({ members, bra
 
             if (!data || data.length === 0) {
                 console.warn("Update returned no data. Possible RLS issue or ID mismatch.");
-                // alert("Update appeared successful but no data was returned..."); // Keeping this warning for safety if it happens again? Or remove all?
-                // User only asked to remove the success popup. I'll remove the success alert.
-                // Actually, if it fails silently, the user might be confused. But let's assume it works now.
-                // I'll leave the error/warning ones or maybe just log them.
-                // Let's remove the success alert as requested.
+                throw new Error("Update failed. You may not have permission to modify this branch.");
             }
 
             onBranchUpdate({ ...branch, total_lockers: newTotal });

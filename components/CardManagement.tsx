@@ -74,12 +74,17 @@ export const CardManagement: React.FC<CardManagementProps> = ({ members, branch,
 
         setSaving(true);
         try {
-            const { error } = await supabase
+            const { data, error } = await supabase
                 .from('branches')
                 .update({ total_cards: newTotal })
-                .eq('id', branch.id);
+                .eq('id', branch.id)
+                .select();
 
             if (error) throw error;
+
+            if (!data || data.length === 0) {
+                throw new Error("Update failed. You may not have permission to modify this branch.");
+            }
 
             onBranchUpdate({ ...branch, total_cards: newTotal });
             setIsEditing(false);

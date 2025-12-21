@@ -42,6 +42,7 @@ export interface Member {
   locker_number?: string;
   seat_no?: string;
   current_plan_start_date?: string;
+  days_passed?: number;
 }
 
 export interface Transaction {
