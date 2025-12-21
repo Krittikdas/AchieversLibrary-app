@@ -211,7 +211,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({ branchId, br
                         </div>
 
                         <div>
-                            <label htmlFor="study-purpose" className="block text-sm font-medium text-slate-700 mb-1">Study Purpose / Occupation *</label>
+                            <label htmlFor="study-purpose" className="block text-sm font-medium text-slate-700 mb-1">Visit purpose*</label>
                             <input
                                 id="study-purpose"
                                 name="studyPurpose"

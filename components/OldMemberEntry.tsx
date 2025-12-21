@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Phone, Mail, MapPin, Calendar, CreditCard, Lock, Save, Clock } from 'lucide-react';
 import { SubscriptionPlan, AccessHours, Member } from '../types';
 
@@ -18,7 +18,7 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
         phone: '',
         email: '',
         address: '',
-        studyPurpose: 'General Study'
+        studyPurpose: ''
     });
 
     // 2. Membership Details
@@ -43,6 +43,19 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
         lockerNumber: '',
         lockerPaymentMode: 'CASH' as 'CASH' | 'UPI'
     });
+
+    // Auto-set free locker for 24 Hours plan
+    useEffect(() => {
+        if (membership.accessHours === AccessHours.HOURS_24) {
+            setAllocations(prev => ({ ...prev, lockerPaymentMode: 'INCLUDED', lockerAssigned: true }));
+        } else {
+            // Optional: revert if switching away, but only if it was 'INCLUDED'
+            setAllocations(prev => ({
+                ...prev,
+                lockerPaymentMode: prev.lockerPaymentMode === 'INCLUDED' ? 'CASH' : prev.lockerPaymentMode
+            }));
+        }
+    }, [membership.accessHours]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();

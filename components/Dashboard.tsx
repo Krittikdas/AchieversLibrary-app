@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Member, Transaction, TransactionType, Branch, Snack } from '../types';
-import { Users, TrendingUp, Clock, AlertCircle, Calendar, Filter, Search, UserPlus, RefreshCw, CreditCard, Lock, Trash2, Tag } from 'lucide-react';
+import { Users, TrendingUp, Clock, AlertCircle, Calendar, Filter, Search, UserPlus, RefreshCw, CreditCard, Lock, Trash2, Tag, User } from 'lucide-react';
 import { CardManagement } from './CardManagement';
 import { LockerManagement } from './LockerManagement';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from 'recharts';
@@ -51,7 +51,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
     };
 
     const expiringMembers = members.filter(m => getMemberStatus(m.expiry_date) === 'EXPIRING');
-    const expiredMembers = members.filter(m => getMemberStatus(m.expiry_date) === 'EXPIRED');
+    const expiredMembers = members.filter(m => getMemberStatus(m.expiry_date) === 'EXPIRED' && m.subscription_plan);
+    const registeredOnlyMembers = members.filter(m => !m.subscription_plan);
 
     // --- Filtering Logic ---
     // Filter Members by Payment Mode for Joining Report
@@ -356,9 +357,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                     <h3 className="text-lg font-bold text-slate-800 mb-4">Alerts & Notifications</h3>
                     <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
-                        {expiringMembers.length === 0 && expiredMembers.length === 0 && (
+                        {expiringMembers.length === 0 && expiredMembers.length === 0 && registeredOnlyMembers.length === 0 && (
                             <p className="text-slate-400 text-sm italic">No alerts at the moment.</p>
                         )}
+                        {registeredOnlyMembers.map(m => (
+                            <div key={m.id} className="flex items-center p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                                <User className="text-slate-600 mr-3" size={18} />
+                                <div>
+                                    <p className="text-sm font-medium text-slate-800">Registered Only: {m.full_name}</p>
+                                    <p className="text-xs text-slate-500">No active plan</p>
+                                </div>
+                            </div>
+                        ))}
                         {expiringMembers.map(m => (
                             <div key={m.id} className="flex items-center p-3 bg-amber-50 border border-amber-100 rounded-lg">
                                 <Clock className="text-amber-600 mr-3" size={18} />
