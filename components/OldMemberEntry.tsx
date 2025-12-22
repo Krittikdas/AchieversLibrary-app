@@ -25,13 +25,15 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
     const [membership, setMembership] = useState({
         plan: SubscriptionPlan.MONTH_1,
         accessHours: AccessHours.HOURS_12,
-        daysPassed: '',
+        startDate: new Date().toISOString().split('T')[0], // Default to today
         // Custom fields matching MembershipForm
         customDurationValue: '',
         customDurationUnit: 'DAYS' as 'DAYS' | 'MONTHS',
         customAccessHours: '',
         paymentAmount: '',
-        paymentMode: 'CASH' as 'CASH' | 'UPI'
+        paymentMode: 'CASH' as 'CASH' | 'UPI' | 'SPLIT',
+        cashAmount: '',
+        upiAmount: ''
     });
 
     // 3. Allocations
@@ -57,8 +59,26 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
         }
     }, [membership.accessHours]);
 
+    const calculateTotal = () => {
+        let total = Number(membership.paymentAmount) || 0;
+        if (allocations.lockerAssigned && allocations.lockerPaymentMode !== 'INCLUDED') total += 200;
+        if (allocations.cardIssued) total += 100;
+        return total;
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (membership.paymentMode === 'SPLIT') {
+            const cash = Number(membership.cashAmount) || 0;
+            const upi = Number(membership.upiAmount) || 0;
+            const fee = Number(membership.paymentAmount) || 0;
+
+            if (Math.abs((cash + upi) - fee) > 1) {
+                alert(`Split amounts (₹${cash + upi}) must match Membership Fee (₹${fee})`);
+                return;
+            }
+        }
 
         // mimic MembershipForm logic
         let durationDays = 30; // default
@@ -83,11 +103,33 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
             ...membership,
             plan: planLabel,
             accessHours: accessLabel,
-            durationDays: durationDays
+            durationDays: durationDays,
+            daysPassed: Math.floor((new Date().getTime() - new Date(membership.startDate).getTime()) / (1000 * 3600 * 24))
         };
 
         onComplete(personal, finalMembership, allocations);
     };
+
+    // Calculate days passed and remaining for display
+    const calculateTimeStatus = () => {
+        const start = new Date(membership.startDate);
+        const today = new Date();
+        const diffTime = today.getTime() - start.getTime();
+        const daysPassed = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+        let durationDays = 30;
+        if (membership.plan === SubscriptionPlan.MONTH_3) durationDays = 90;
+        if (membership.plan === SubscriptionPlan.MONTH_6) durationDays = 180;
+        if (membership.plan === SubscriptionPlan.CUSTOM) {
+            const val = parseInt(membership.customDurationValue) || 0;
+            durationDays = membership.customDurationUnit === 'MONTHS' ? val * 30 : val;
+        }
+
+        const daysRemaining = durationDays - daysPassed;
+        return { daysPassed, daysRemaining, durationDays };
+    };
+
+    const timeStatus = calculateTimeStatus();
 
     return (
         <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
@@ -219,20 +261,32 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
                             )}
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1 text-amber-600">Days Already Passed</label>
+                            <label className="block text-sm font-medium text-slate-700 mb-1 text-amber-600">Joining Date</label>
                             <input
-                                type="number"
-                                placeholder="e.g. 15"
+                                type="date"
                                 required
-                                min="0"
+                                max={new Date().toISOString().split('T')[0]}
                                 className="w-full px-3 py-2 border-2 border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-200 focus:outline-none"
-                                value={membership.daysPassed}
-                                onChange={e => setMembership({ ...membership, daysPassed: e.target.value })}
+                                value={membership.startDate}
+                                onChange={e => setMembership({ ...membership, startDate: e.target.value })}
                             />
-                            <p className="text-xs text-slate-500 mt-1">This will backdate the start date.</p>
+                            {membership.startDate && (
+                                <div className="mt-2 text-xs text-slate-600 space-y-1 bg-amber-50 p-2 rounded border border-amber-100">
+                                    <div className="flex justify-between">
+                                        <span>Days Passed:</span>
+                                        <span className="font-bold">{timeStatus.daysPassed} days</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Days Remaining:</span>
+                                        <span className={`font-bold ${timeStatus.daysRemaining < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                            {timeStatus.daysRemaining} days
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Membership Fee (₹)</label>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Membership Fee (₹) <br /> (Please deduct 300 for registration fee)</label>
                             <input
                                 type="number"
                                 placeholder="Amount Paid"
@@ -251,7 +305,32 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
                             >
                                 <option value="CASH">Cash</option>
                                 <option value="UPI">UPI</option>
+                                <option value="SPLIT">Split (Cash + UPI)</option>
                             </select>
+                            {membership.paymentMode === 'SPLIT' && (
+                                <div className="mt-2 grid grid-cols-2 gap-2 bg-slate-50 p-2 rounded border border-slate-200">
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-600">Cash (₹)</label>
+                                        <input
+                                            type="number"
+                                            className="w-full px-2 py-1 text-sm border rounded"
+                                            value={membership.cashAmount}
+                                            onChange={e => setMembership({ ...membership, cashAmount: e.target.value })}
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-600">UPI (₹)</label>
+                                        <input
+                                            type="number"
+                                            className="w-full px-2 py-1 text-sm border rounded"
+                                            value={membership.upiAmount}
+                                            onChange={e => setMembership({ ...membership, upiAmount: e.target.value })}
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -333,6 +412,17 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
                                 </div>
                             )}
                         </div>
+                    </div>
+                </div>
+
+                {/* Total Summary */}
+                <div className="bg-indigo-900 text-white p-6 rounded-xl shadow-lg flex justify-between items-center">
+                    <div>
+                        <h4 className="text-lg font-semibold text-indigo-200">Total Amount Paid</h4>
+                        <p className="text-sm text-indigo-300">Includes Membership + Locker + Card</p>
+                    </div>
+                    <div className="text-4xl font-bold">
+                        ₹{calculateTotal()}
                     </div>
                 </div>
 

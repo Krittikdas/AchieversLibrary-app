@@ -401,7 +401,7 @@ export const MembershipForm: React.FC<MembershipFormProps> = ({ branchId, member
 
                     {/* Seat Number Section */}
                     <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Assigned Seat Number (Optional)</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Assigned Seat Number (Can't be added later)</label>
                         <input
                             type="text"
                             placeholder="e.g. A-15"

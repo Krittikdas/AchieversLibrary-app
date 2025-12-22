@@ -465,6 +465,76 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
     fetchInitialData();
   }, [session]);
 
+  /* 
+ * AUTO-SYNC: Check and backfill missing registration fees on load.
+ * This is a one-time fix for existing members who missed the fee recording.
+ */
+  useEffect(() => {
+    const syncRegistrationFees = async () => {
+      if (!profile?.branch_id) return;
+      if (profile.role !== 'ADMIN') return; // Only Admin triggers this sync
+
+      // 1. Get all members of this branch
+      const { data: allMembers } = await supabase
+        .from('members')
+        .select('id, full_name, join_date')
+        .eq('branch_id', profile.branch_id);
+
+      if (!allMembers?.length) return;
+
+      // 2. Get all REGISTRATION transactions
+      const { data: regTxns } = await supabase
+        .from('transactions')
+        .select('member_id')
+        .eq('branch_id', profile.branch_id)
+        .eq('type', TransactionType.REGISTRATION);
+
+      const existingRegMemberIds = new Set(regTxns?.map(t => t.member_id) || []);
+
+      // 3. Find members missing the fee
+      const missingFeeMembers = allMembers.filter(m => !existingRegMemberIds.has(m.id));
+
+      if (missingFeeMembers.length === 0) return;
+
+      console.log(`Auto-Sync: Found ${missingFeeMembers.length} members missing registration fee. Fixing...`);
+
+      // 4. Insert missing transactions
+      const newTxns = missingFeeMembers.map(m => ({
+        type: TransactionType.REGISTRATION,
+        amount: 300,
+        description: `Backfill: Registration Fee - ${m.full_name}`,
+        branch_id: profile.branch_id,
+        member_id: m.id,
+        status: 'COMPLETED',
+        payment_mode: 'CASH', // Assume CASH for backfill
+        timestamp: m.join_date || new Date().toISOString()
+      }));
+
+      const { error: insertError } = await supabase
+        .from('transactions')
+        .insert(newTxns);
+
+      if (insertError) {
+        console.error("Auto-Sync Failed:", insertError);
+      } else {
+        console.log("Auto-Sync Success: Backfilled fees for", missingFeeMembers.length, "members.");
+        showNotification(`Auto-Fixed: Added missing Registration Fees for ${missingFeeMembers.length} members.`);
+
+        // Refresh local state
+        const { data: refetchedTxns } = await supabase.from('transactions').select('*');
+        if (refetchedTxns) setAppState(prev => ({ ...prev, transactions: refetchedTxns }));
+      }
+    };
+
+    if (profile?.branch_id && appState.members.length > 0) {
+      // Small delay to ensure data is loaded
+      const timer = setTimeout(() => {
+        syncRegistrationFees();
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [profile, appState.members.length]); // Run when members update or profile loads
+
   const currentBranch = appState.branches.find(b => b.id === profile?.branch_id);
 
   // --- Handlers ---
@@ -854,6 +924,75 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
     }
   };
 
+
+  const handleClearPlans = async (memberIds: string[]) => {
+    if (!memberIds.length) return;
+
+    try {
+      // NOTE: We do NOT clear join_date as it is a required field (NOT NULL constraint).
+      // We set expiry_date to a past date (epoch) to satisfy NOT NULL constraint while ensuring effective 'expiry'.
+
+      // 1. Remove associated transactions (Revenue)
+      const { error: txError } = await supabase
+        .from('transactions')
+        .delete()
+        .in('member_id', memberIds)
+        .in('type', ['MEMBERSHIP', 'LOCKER', 'CARD']);
+
+      if (txError) console.error("Error deleting transactions:", txError);
+
+      const { data, error } = await supabase
+        .from('members')
+        .update({
+          subscription_plan: null,
+          // join_date: null, // Violated NOT NULL
+          expiry_date: new Date(0).toISOString(), // Violated NOT NULL -> Set to epoch
+          daily_access_hours: null,
+          current_plan_start_date: null,
+          days_passed: null,
+          locker_assigned: false,
+          locker_number: null,
+          locker_payment_mode: null,
+          seat_no: null,
+          card_returned: true // Mark card as returned
+        })
+        .in('id', memberIds)
+        .select();
+
+      if (error) {
+        console.error("Error clearing plans:", error);
+        alert(`Error clearing plans: ${error.message}`);
+        throw error;
+      }
+
+      setAppState(prev => ({
+        ...prev,
+        members: prev.members.map(m =>
+          memberIds.includes(m.id)
+            ? {
+              ...m,
+              subscription_plan: undefined,
+              expiry_date: new Date(0).toISOString(),
+              daily_access_hours: undefined,
+              current_plan_start_date: undefined,
+              locker_assigned: false,
+              locker_number: undefined,
+              locker_payment_mode: undefined
+            }
+            : m
+        ),
+        transactions: prev.transactions.filter(t =>
+          !(memberIds.includes(t.member_id) && ['MEMBERSHIP', 'LOCKER', 'CARD'].includes(t.type))
+        )
+      }));
+
+      showNotification(`Plans cleared for ${memberIds.length} members.`);
+
+    } catch (err: any) {
+      console.error("Error clearing plans:", err);
+    }
+  };
+
   const handleSnackSale = async (amount: number, description: string, paymentMode: 'CASH' | 'UPI') => {
     if (!profile?.branch_id) return;
 
@@ -1021,13 +1160,21 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
     }).length;
     const lockersAvailable = Math.max(0, totalLockers - lockersInUse);
 
+
+
     const handleOldMemberEntry = async (personal: any, membership: any, allocations: any) => {
       if (!profile?.branch_id) return;
 
-      const today = new Date();
-      const daysPassed = parseInt(membership.daysPassed) || 0;
-      const startDate = new Date(today);
-      startDate.setDate(today.getDate() - daysPassed);
+      let startDate = new Date();
+      if (membership.startDate) {
+        startDate = new Date(membership.startDate);
+      } else {
+        // Fallback
+        const daysPassed = parseInt(membership.daysPassed) || 0;
+        startDate.setDate(startDate.getDate() - daysPassed);
+      }
+
+      const daysPassed = Math.floor((new Date().getTime() - startDate.getTime()) / (1000 * 3600 * 24));
 
       let durationDays = membership.durationDays || 30;
       if (membership.plan === SubscriptionPlan.MONTH_3) durationDays = 90;
@@ -1080,20 +1227,43 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
       }
 
       if (insertedMember) {
+        // 3.5 Create Registration Transaction (₹300) - MISSING IN PREVIOUS LOGIC
+        const { error: regTxnError } = await supabase
+          .from('transactions')
+          .insert({
+            type: TransactionType.REGISTRATION, // Correct transaction type
+            amount: 300, // Standard Fee
+            description: `Registration Fee (Old Member) - ${personal.fullName}`,
+            branch_id: profile.branch_id,
+            member_id: insertedMember.id,
+            status: 'COMPLETED',
+            payment_mode: 'CASH', // Default for old entries or could be improved later
+            timestamp: startDate.toISOString() // Backdated to join date
+          });
+
+        if (regTxnError) console.error("Error creating registration transaction:", regTxnError);
+
         // 4. Create Transaction Record for the Old Membership
         if (membership.paymentAmount && Number(membership.paymentAmount) > 0) {
+          const txnData: any = {
+            type: 'MEMBERSHIP',
+            amount: Number(membership.paymentAmount),
+            payment_mode: membership.paymentMode || 'CASH',
+            status: 'COMPLETED',
+            member_id: insertedMember.id,
+            branch_id: profile.branch_id,
+            timestamp: startDate.toISOString(), // Backdated to when they supposedly joined
+            description: `Old Membership Entry: ${membership.plan} (${membership.daysPassed} days ago)`
+          };
+
+          if (membership.paymentMode === 'SPLIT') {
+            txnData.cash_amount = Number(membership.cashAmount) || 0;
+            txnData.upi_amount = Number(membership.upiAmount) || 0;
+          }
+
           const { error: txnError } = await supabase
             .from('transactions')
-            .insert({
-              type: 'MEMBERSHIP',
-              amount: Number(membership.paymentAmount),
-              payment_mode: membership.paymentMode || 'CASH',
-              status: 'COMPLETED',
-              member_id: insertedMember.id,
-              branch_id: profile.branch_id,
-              timestamp: startDate.toISOString(), // Backdated to when they supposedly joined
-              description: `Old Membership Entry: ${membership.plan} (${membership.daysPassed} days ago)`
-            });
+            .insert(txnData);
 
           if (txnError) {
             console.error("Error creating old transaction:", txnError);
@@ -1231,6 +1401,7 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
               onReturnCard={handleReturnCard}
               onAssignLocker={handleAssignLocker}
               onDeleteMembers={handleDeleteMembers}
+              onClearPlans={handleClearPlans}
               hideStats={true}
             />
           </div>

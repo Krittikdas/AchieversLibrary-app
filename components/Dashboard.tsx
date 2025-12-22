@@ -5,6 +5,7 @@ import { Member, Transaction, TransactionType, Branch, Snack } from '../types';
 import { Users, TrendingUp, Clock, AlertCircle, Calendar, Filter, Search, UserPlus, RefreshCw, CreditCard, Lock, Trash2, Tag, User } from 'lucide-react';
 import { CardManagement } from './CardManagement';
 import { LockerManagement } from './LockerManagement';
+import { DateRangeFilter } from './DateRangeFilter';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from 'recharts';
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
@@ -23,12 +24,13 @@ interface DashboardProps {
     branch?: Branch;
     hideStats?: boolean;
     onDeleteMembers?: (memberIds: string[]) => void;
+    onClearPlans?: (memberIds: string[]) => void;
 }
 
 type DashboardView = 'OVERVIEW' | 'SNACKS' | 'JOINING' | 'MEMBERS' | 'CARDS' | 'LOCKERS';
 type MemberFilter = 'ALL' | 'ACTIVE' | 'EXPIRING' | 'EXPIRED';
 
-export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, snacks = [], onRenew, onBack, readOnly, onIssueCard, onReturnCard, onAssignLocker, onReturnLocker, branch, hideStats, onDeleteMembers }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, snacks = [], onRenew, onBack, readOnly, onIssueCard, onReturnCard, onAssignLocker, onReturnLocker, branch, hideStats, onDeleteMembers, onClearPlans }) => {
     const [view, setView] = useState<DashboardView>('OVERVIEW');
     const [memberFilter, setMemberFilter] = useState<MemberFilter>('ALL');
     const [paymentModeFilter, setPaymentModeFilter] = useState<'ALL' | 'CASH' | 'UPI'>('ALL');
@@ -37,6 +39,35 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
     const [lockerAssignPopup, setLockerAssignPopup] = useState<string | null>(null); // member id for popup
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
+    const [dateRange, setDateRange] = useState<{ start: Date | null, end: Date | null }>({ start: null, end: null });
+
+    // Initialize Date Range to Last 7 Days
+    React.useEffect(() => {
+        const today = new Date();
+        const start = new Date(today);
+        start.setDate(today.getDate() - 6);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(today);
+        end.setHours(23, 59, 59, 999);
+        setDateRange({ start, end });
+    }, []);
+
+    // --- Filtered Data based on Date Range ---
+    const dateFilteredTransactions = React.useMemo(() => {
+        if (!dateRange.start || !dateRange.end) return transactions;
+        return transactions.filter(t => {
+            const d = new Date(t.timestamp);
+            return d >= dateRange.start! && d <= dateRange.end!;
+        });
+    }, [transactions, dateRange]);
+
+    const dateFilteredMembers = React.useMemo(() => {
+        if (!dateRange.start || !dateRange.end) return members;
+        return members.filter(m => {
+            const d = new Date(m.join_date);
+            return d >= dateRange.start! && d <= dateRange.end!;
+        });
+    }, [members, dateRange]);
 
     // --- Calculations ---
     const today = new Date();
@@ -91,47 +122,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
 
 
 
-    // --- Revenue Calculations ---
-    const calculateRevenue = (days: number) => {
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - days);
-
-        return transactions
-            .filter(t => new Date(t.timestamp) >= cutoff)
-            .reduce((sum, t) => {
-                if (paymentModeFilter === 'ALL') {
-                    return sum + t.amount;
-                } else if (paymentModeFilter === 'CASH') {
-                    // Full Cash payments + cash portion of Split payments
-                    if (t.payment_mode === 'CASH') return sum + t.amount;
-                    if (t.payment_mode === 'SPLIT') return sum + (t.cash_amount || 0);
-                    return sum;
-                } else if (paymentModeFilter === 'UPI') {
-                    // Full UPI payments + upi portion of Split payments
-                    if (t.payment_mode === 'UPI') return sum + t.amount;
-                    if (t.payment_mode === 'SPLIT') return sum + (t.upi_amount || 0);
-                    return sum;
-                }
-                return sum;
-            }, 0);
-    };
-
-    // --- Locker Revenue inclusion is implicit in calculateRevenue because it sums transactions.
-    // However, if we want separate tracking we can add it. For now, general revenue includes it.
-
-    const dailyRevenue = calculateRevenue(1);
-    const weeklyRevenue = calculateRevenue(7);
-    const monthlyRevenue = calculateRevenue(30);
-    const totalRevenue = calculateRevenue(36500); // All time (100 years)
-
-    // --- Snack Revenue Calculations ---
-    const calculateSnackRevenue = (days: number) => {
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - days);
-
-        return transactions
-            .filter(t => new Date(t.timestamp) >= cutoff)
-            .filter(t => t.type === TransactionType.SNACK)
+    // --- Revenue Calculations (Selected Period) ---
+    const calculateFilteredRevenue = (type?: TransactionType) => {
+        return dateFilteredTransactions
+            .filter(t => !type || t.type === type)
             .reduce((sum, t) => {
                 if (paymentModeFilter === 'ALL') {
                     return sum + t.amount;
@@ -148,21 +142,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
             }, 0);
     };
 
-    const dailySnackRevenue = calculateSnackRevenue(1);
-    const weeklySnackRevenue = calculateSnackRevenue(7);
-    const monthlySnackRevenue = calculateSnackRevenue(30);
+    const selectedPeriodRevenue = calculateFilteredRevenue();
+    const selectedPeriodSnackRevenue = calculateFilteredRevenue(TransactionType.SNACK);
 
-    // --- Joining Calculations ---
-    const calculateJoinings = (days: number) => {
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - days);
+    // --- Joining Calculations (Selected Period) ---
+    const joiningReportFilteredMembers = React.useMemo(() => {
+        // Apply Payment Mode Filter first (from original logic)
+        if (paymentModeFilter === 'ALL') return dateFilteredMembers;
 
-        return joiningReportMembers.filter(m => new Date(m.join_date) >= cutoff).length;
-    };
+        // This logic needs to filter 'dateFilteredMembers' by 'transactions' that match filter
+        // But 'transactions' itself should strictly be date restricted if we follow pure logic? 
+        // Actually user might want "Members joined in range X, paid via Y".
+        // The payment check logic relies on looking up transactions for that member.
+        // We can reuse the existing 'joiningReportMembers' logic but apply date filter on top.
 
-    const dailyJoinings = calculateJoinings(1);
-    const weeklyJoinings = calculateJoinings(7);
-    const monthlyJoinings = calculateJoinings(30);
+        // Simplest is to just filter 'joiningReportMembers' by date:
+        if (!dateRange.start || !dateRange.end) return joiningReportMembers;
+        return joiningReportMembers.filter(m => {
+            const d = new Date(m.join_date);
+            return d >= dateRange.start! && d <= dateRange.end!;
+        });
+    }, [joiningReportMembers, dateRange]);
+
+    const selectedPeriodJoinings = joiningReportFilteredMembers.length;
 
     const getJoiningChartData = (days: number) => {
         const data: Record<string, { name: string, count: number, revenue: number }> = {};
@@ -213,11 +215,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
         return Object.values(data);
     };
 
+    const cleanPlanName = (planName: string) => {
+        if (!planName) return 'Unknown';
+        // Remove common access hour suffixes if present (e.g., "(6 Hours)", "- 12 Hours")
+        // Also normalization for Custom if needed, but user asked to keep duration.
+        // Assuming format is "1 Month", "3 Months", "Custom (30 DAYS)"
+        // If data contains "1 Month (6 Hours)", we want "1 Month".
+
+        // Regex to strip parenthesis containing 'Hours' or 'Hour'
+        let cleaned = planName.replace(/\(\d+\s*Hours?\)/i, '').trim();
+        // Regex to strip " - N Hours"
+        cleaned = cleaned.replace(/-\s*\d+\s*Hours?/i, '').trim();
+
+        return cleaned;
+    };
+
     const getPlanStats = () => {
         const stats: Record<string, number> = {};
         joiningReportMembers.forEach(m => {
-            // Only consider active members for plan preference? Or all? Let's do all for preference trends.
-            const plan = m.subscription_plan || 'Unknown';
+            const rawPlan = m.subscription_plan || 'Unknown';
+            const plan = cleanPlanName(rawPlan);
             stats[plan] = (stats[plan] || 0) + 1;
         });
         return Object.keys(stats).map(name => ({ name, value: stats[name] }));
@@ -241,6 +258,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
     };
 
     // Chart Data Preparation
+
+
     const getSalesChartData = (days: number) => {
         const data: Record<string, { name: string, snacks: number, memberships: number }> = {};
 
@@ -309,7 +328,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
 
     const renderOverview = () => (
         <div className="space-y-6">
-            <div className="flex justify-end">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <DateRangeFilter
+                    onRangeChange={(start, end) => setDateRange({ start, end })}
+                    className="w-full md:w-auto"
+                />
                 {renderPaymentModeToggle()}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -318,8 +341,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
                     <h3 className="text-3xl font-bold text-indigo-600">{members.length}</h3>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                    <p className="text-sm font-medium text-slate-500 mb-1">Today's Sales</p>
-                    <h3 className="text-3xl font-bold text-green-600">₹{dailyRevenue}</h3>
+                    <p className="text-sm font-medium text-slate-500 mb-1">Revenue (Selected Period)</p>
+                    <h3 className="text-3xl font-bold text-green-600">₹{selectedPeriodRevenue}</h3>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                     <div className="flex justify-between">
@@ -331,9 +354,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
                     </div>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                    <p className="text-sm font-medium text-slate-500 mb-1">Total Revenue</p>
-                    <h3 className="text-3xl font-bold text-slate-700">₹{totalRevenue}</h3>
-                    <p className="text-xs text-slate-400 mt-1">All Time</p>
+                    <div className="flex justify-between">
+                        <div>
+                            <p className="text-sm font-medium text-slate-500 mb-1">New Joinings (Selected Period)</p>
+                            <h3 className="text-3xl font-bold text-emerald-600">{selectedPeriodJoinings}</h3>
+                        </div>
+                        <UserPlus className="text-slate-300" />
+                    </div>
                 </div>
             </div>
 
@@ -357,18 +384,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                     <h3 className="text-lg font-bold text-slate-800 mb-4">Alerts & Notifications</h3>
                     <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
-                        {expiringMembers.length === 0 && expiredMembers.length === 0 && registeredOnlyMembers.length === 0 && (
-                            <p className="text-slate-400 text-sm italic">No alerts at the moment.</p>
-                        )}
-                        {registeredOnlyMembers.map(m => (
-                            <div key={m.id} className="flex items-center p-3 bg-slate-50 border border-slate-100 rounded-lg">
-                                <User className="text-slate-600 mr-3" size={18} />
-                                <div>
-                                    <p className="text-sm font-medium text-slate-800">Registered Only: {m.full_name}</p>
-                                    <p className="text-xs text-slate-500">No active plan</p>
-                                </div>
-                            </div>
-                        ))}
                         {expiringMembers.map(m => (
                             <div key={m.id} className="flex items-center p-3 bg-amber-50 border border-amber-100 rounded-lg">
                                 <Clock className="text-amber-600 mr-3" size={18} />
@@ -395,29 +410,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
 
     const renderSnackSales = () => (
         <div className="space-y-8">
-            <div className="flex justify-end">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <DateRangeFilter
+                    onRangeChange={(start, end) => setDateRange({ start, end })}
+                    className="w-full md:w-auto"
+                />
                 {renderPaymentModeToggle()}
             </div>
             <div>
                 <h3 className="text-lg font-bold text-slate-800 mb-4">Snacks Financial Overview</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="p-6 bg-blue-50 rounded-xl border border-blue-100">
-                        <h4 className="text-blue-800 font-semibold mb-2">Today</h4>
-                        <p className="text-3xl font-bold text-blue-600">₹{dailySnackRevenue}</p>
-                    </div>
-                    <div className="p-6 bg-indigo-50 rounded-xl border border-indigo-100">
-                        <h4 className="text-indigo-800 font-semibold mb-2">This Week</h4>
-                        <p className="text-3xl font-bold text-indigo-600">₹{weeklySnackRevenue}</p>
-                    </div>
-                    <div className="p-6 bg-violet-50 rounded-xl border border-violet-100">
-                        <h4 className="text-violet-800 font-semibold mb-2">This Month</h4>
-                        <p className="text-3xl font-bold text-violet-600">₹{monthlySnackRevenue}</p>
+                        <h4 className="text-blue-800 font-semibold mb-2">Selected Period Revenue</h4>
+                        <p className="text-3xl font-bold text-blue-600">₹{selectedPeriodSnackRevenue}</p>
                     </div>
                 </div>
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                <h3 className="text-lg font-bold text-slate-800 mb-6">Snack Sales Trend</h3>
+                <h3 className="text-lg font-bold text-slate-800 mb-6">Snack Sales Trend (Last 30 Days)</h3>
                 <div className="h-80">
                     <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={getSalesChartData(30)}>
@@ -452,7 +463,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
                             {(() => {
                                 const itemStats: Record<string, { qty: number; revenue: number }> = {};
 
-                                transactions
+                                dateFilteredTransactions // Use filtered transactions for snack list
                                     .filter(t => t.type === TransactionType.SNACK)
                                     .forEach(t => {
                                         // Filter by payment mode if needed
@@ -465,6 +476,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
                                         const desc = t.description.replace('Snacks: ', '');
                                         const parts = desc.split(', ');
 
+                                        // Calculate actual transaction amount relevant to filters
+                                        let txnAmount = 0;
+                                        if (paymentModeFilter === 'ALL') {
+                                            txnAmount = t.amount;
+                                        } else if (paymentModeFilter === 'CASH') {
+                                            if (t.payment_mode === 'CASH') txnAmount = t.amount;
+                                            else if (t.payment_mode === 'SPLIT') txnAmount = t.cash_amount || 0;
+                                        } else if (paymentModeFilter === 'UPI') {
+                                            if (t.payment_mode === 'UPI') txnAmount = t.amount;
+                                            else if (t.payment_mode === 'SPLIT') txnAmount = t.upi_amount || 0;
+                                        }
+
                                         parts.forEach(part => {
                                             const match = part.match(/(\d+)x (.+)/);
                                             if (match) {
@@ -474,10 +497,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
                                                 if (!itemStats[name]) itemStats[name] = { qty: 0, revenue: 0 };
                                                 itemStats[name].qty += qty;
 
-                                                // Calculate revenue based on current snack price
-                                                const snack = snacks.find(s => s.name === name);
-                                                if (snack) {
-                                                    itemStats[name].revenue += qty * snack.price;
+                                                // Improved Revenue Logic
+                                                if (parts.length === 1) {
+                                                    // Single item in transaction: use the actual transaction amount
+                                                    // This handles deleted snacks, price changes, and exact sales tracking
+                                                    itemStats[name].revenue += txnAmount;
+                                                } else {
+                                                    // Multiple items: Estimate based on current snack price
+                                                    const snack = snacks.find(s => s.name.toLowerCase() === name.toLowerCase());
+                                                    if (snack) {
+                                                        itemStats[name].revenue += qty * snack.price;
+                                                    }
                                                 }
                                             }
                                         });
@@ -519,7 +549,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
 
     const renderJoining = () => (
         <div className="space-y-8">
-            <div className="flex justify-end">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <DateRangeFilter
+                    onRangeChange={(start, end) => setDateRange({ start, end })}
+                    className="w-full md:w-auto"
+                />
                 {renderPaymentModeToggle()}
             </div>
             <div>
@@ -527,24 +561,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="p-6 bg-emerald-50 rounded-xl border border-emerald-100 flex items-center justify-between">
                         <div>
-                            <h4 className="text-emerald-800 font-semibold mb-2">Today</h4>
-                            <p className="text-3xl font-bold text-emerald-600">{dailyJoinings}</p>
+                            <h4 className="text-emerald-800 font-semibold mb-2">Selected Period</h4>
+                            <p className="text-3xl font-bold text-emerald-600">{selectedPeriodJoinings}</p>
                         </div>
                         <UserPlus className="text-emerald-200" size={40} />
-                    </div>
-                    <div className="p-6 bg-teal-50 rounded-xl border border-teal-100 flex items-center justify-between">
-                        <div>
-                            <h4 className="text-teal-800 font-semibold mb-2">This Week</h4>
-                            <p className="text-3xl font-bold text-teal-600">{weeklyJoinings}</p>
-                        </div>
-                        <UserPlus className="text-teal-200" size={40} />
-                    </div>
-                    <div className="p-6 bg-cyan-50 rounded-xl border border-cyan-100 flex items-center justify-between">
-                        <div>
-                            <h4 className="text-cyan-800 font-semibold mb-2">This Month</h4>
-                            <p className="text-3xl font-bold text-cyan-600">{monthlyJoinings}</p>
-                        </div>
-                        <UserPlus className="text-cyan-200" size={40} />
                     </div>
                 </div>
             </div>
@@ -660,8 +680,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
                                 </span>
                                 <button
                                     onClick={() => {
-                                        if (confirm(`Are you sure you want to delete ${selectedMemberIds.size} members? This cannot be undone.`)) {
-                                            onDeleteMembers(Array.from(selectedMemberIds));
+                                        if (confirm(`Are you sure you want to clear plans for ${selectedMemberIds.size} members? They will remain in the directory.`)) {
+                                            if (onClearPlans) {
+                                                onClearPlans(Array.from(selectedMemberIds));
+                                            } else if (onDeleteMembers) {
+                                                // Fallback if prop not provided (though we should update App.tsx)
+                                                onDeleteMembers(Array.from(selectedMemberIds));
+                                            }
                                             setIsSelectionMode(false);
                                             setSelectedMemberIds(new Set());
                                         }
@@ -669,7 +694,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
                                     disabled={selectedMemberIds.size === 0}
                                     className="px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-all"
                                 >
-                                    Delete Selected
+                                    Clear Plans Selected
                                 </button>
                                 <button
                                     onClick={() => {

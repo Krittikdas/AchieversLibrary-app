@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { AppState, Branch, Member, Transaction } from '../types';
 import { MOCK_BRANCHES } from '../constants';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Building2, IndianRupee, Users, Filter, Plus, Save, Eye, EyeOff, Download } from 'lucide-react';
+import { DateRangeFilter } from './DateRangeFilter';
 
 interface AdminViewProps {
   state: AppState;
@@ -144,64 +145,40 @@ const DataExportSection: React.FC<DataExportSectionProps> = ({ branches, members
 };
 
 export const AdminView: React.FC<AdminViewProps> = ({ state, onViewBranch }) => {
-  const [selectedMonth, setSelectedMonth] = useState<string>('ALL');
+  const [dateRange, setDateRange] = useState<{ start: Date | null, end: Date | null }>({ start: null, end: null });
 
-  const [selectedYear, setSelectedYear] = useState<string>('ALL');
-  const [selectedDate, setSelectedDate] = useState<string>('');
-
-  // Generate Year Options (Current Year +/- 2)
-  const currentYear = new Date().getFullYear();
-  const years = [currentYear - 1, currentYear, currentYear + 1];
-
-  const months = [
-    { value: '0', label: 'January' },
-    { value: '1', label: 'February' },
-    { value: '2', label: 'March' },
-    { value: '3', label: 'April' },
-    { value: '4', label: 'May' },
-    { value: '5', label: 'June' },
-    { value: '6', label: 'July' },
-    { value: '7', label: 'August' },
-    { value: '8', label: 'September' },
-    { value: '9', label: 'October' },
-    { value: '10', label: 'November' },
-    { value: '11', label: 'December' },
-  ];
+  // Default to Last 7 Days on load? Or All? 
+  // User requested "Last 7 days" as like YouTube.
+  // We can let the component handle the initial state visual, but we need to set initial state here if we want it to apply immediately.
+  // The component defaults to 7 days visually, so let's default the logic to 7 days too.
+  useEffect(() => {
+    const today = new Date();
+    const start = new Date(today);
+    start.setDate(today.getDate() - 6);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(today);
+    end.setHours(23, 59, 59, 999);
+    setDateRange({ start, end });
+  }, []);
 
   // Filter Data
   const filteredData = useMemo(() => {
     let filteredTransactions = state.transactions;
     let filteredMembers = state.members;
 
-    if (selectedDate) {
-      // Precise Date Filter
-      const targetDate = new Date(selectedDate);
+    if (dateRange.start && dateRange.end) {
       filteredTransactions = filteredTransactions.filter(t => {
-        const tDate = new Date(t.timestamp);
-        return tDate.getDate() === targetDate.getDate() &&
-          tDate.getMonth() === targetDate.getMonth() &&
-          tDate.getFullYear() === targetDate.getFullYear();
+        const d = new Date(t.timestamp);
+        return d >= dateRange.start! && d <= dateRange.end!;
       });
       filteredMembers = filteredMembers.filter(m => {
-        const mDate = new Date(m.join_date);
-        return mDate.getDate() === targetDate.getDate() &&
-          mDate.getMonth() === targetDate.getMonth() &&
-          mDate.getFullYear() === targetDate.getFullYear();
+        const d = new Date(m.join_date);
+        return d >= dateRange.start! && d <= dateRange.end!;
       });
-    } else {
-      if (selectedYear !== 'ALL') {
-        filteredTransactions = filteredTransactions.filter(t => new Date(t.timestamp).getFullYear().toString() === selectedYear);
-        filteredMembers = filteredMembers.filter(m => new Date(m.join_date).getFullYear().toString() === selectedYear);
-      }
-
-      if (selectedMonth !== 'ALL') {
-        filteredTransactions = filteredTransactions.filter(t => new Date(t.timestamp).getMonth().toString() === selectedMonth);
-        filteredMembers = filteredMembers.filter(m => new Date(m.join_date).getMonth().toString() === selectedMonth);
-      }
     }
 
     return { transactions: filteredTransactions, members: filteredMembers };
-  }, [state.transactions, state.members, selectedMonth, selectedYear, selectedDate]);
+  }, [state.transactions, state.members, dateRange]);
 
 
   // Aggregate Data by Branch using Filtered Data
@@ -223,67 +200,22 @@ export const AdminView: React.FC<AdminViewProps> = ({ state, onViewBranch }) => 
   const totalSystemRevenue = branchData.reduce((sum, b) => sum + b.revenue, 0);
   const totalNewMembers = branchData.reduce((sum, b) => sum + b.membersAdded, 0);
 
-  const isFiltered = selectedMonth !== 'ALL' || selectedYear !== 'ALL' || selectedDate !== '';
+  const isFiltered = dateRange.start !== null || dateRange.end !== null;
 
   return (
     <div className="space-y-8">
       {/* Filter Controls */}
-      <div className="flex flex-col md:flex-row justify-end items-center border-b border-slate-200 pb-6 gap-4">
-        <div className="flex flex-wrap items-center gap-3 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
-          <div className="flex items-center px-2 text-slate-500">
-            <Filter size={18} className="mr-2" />
-            <span className="text-sm font-medium">Filters:</span>
-          </div>
-
-          <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="border-slate-200 rounded-md text-sm py-1.5 pl-2 pr-8 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50"
-          >
-            <option value="ALL">All Months</option>
-            {months.map(m => (
-              <option key={m.value} value={m.value}>{m.label}</option>
-            ))}
-          </select>
-
-          <select
-            value={selectedYear}
-            onChange={(e) => {
-              setSelectedYear(e.target.value);
-              if (selectedDate) setSelectedDate(''); // Clear specific date if year changes
-            }}
-            className="border-slate-200 rounded-md text-sm py-1.5 pl-2 pr-8 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50"
-          >
-            <option value="ALL">All Years</option>
-            {years.map(y => (
-              <option key={y} value={y.toString()}>{y}</option>
-            ))}
-          </select>
-
-          <span className="text-slate-300">|</span>
-
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => {
-              setSelectedDate(e.target.value);
-              if (e.target.value) {
-                // If date is selected, clear month/year to show visual priority
-                setSelectedMonth('ALL');
-                setSelectedYear('ALL');
-              }
-            }}
-            className="border-slate-200 rounded-md text-sm py-1.5 px-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50"
+      {/* Filter Controls */}
+      <div className="flex flex-col md:flex-row justify-between items-center border-b border-slate-200 pb-6 gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Admin Dashboard</h1>
+          <p className="text-slate-500">Manage branches and view performance.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <DateRangeFilter
+            onRangeChange={(start, end) => setDateRange({ start, end })}
+            className="w-full md:w-auto"
           />
-
-          {(selectedMonth !== 'ALL' || selectedYear !== 'ALL' || selectedDate !== '') && (
-            <button
-              onClick={() => { setSelectedMonth('ALL'); setSelectedYear('ALL'); setSelectedDate(''); }}
-              className="text-xs text-red-600 hover:text-red-800 font-medium px-2"
-            >
-              Clear
-            </button>
-          )}
         </div>
       </div>
 

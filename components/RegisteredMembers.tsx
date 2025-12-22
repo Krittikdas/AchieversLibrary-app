@@ -59,15 +59,28 @@ export const RegisteredMembers: React.FC<RegisteredMembersProps> = ({ members, o
                                 <h2 className="text-2xl font-bold text-slate-800">{member.full_name}</h2>
                                 <p className="text-sm text-slate-500 font-mono">ID: {member.id.split('-')[0]}</p>
                                 <div className="mt-2 flex gap-2">
-                                    {hasActivePlan ? (
-                                        <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full border border-green-200">
-                                            Active Member
-                                        </span>
-                                    ) : (
-                                        <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-bold rounded-full border border-slate-200">
-                                            Registered Only
-                                        </span>
-                                    )}
+                                    {(() => {
+                                        const isExpired = member.subscription_plan && new Date(member.expiry_date) <= new Date();
+                                        if (hasActivePlan) {
+                                            return (
+                                                <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full border border-green-200">
+                                                    Active Member
+                                                </span>
+                                            );
+                                        } else if (isExpired) {
+                                            return (
+                                                <span className="px-3 py-1 bg-red-100 text-red-600 text-xs font-bold rounded-full border border-red-200">
+                                                    Expired
+                                                </span>
+                                            );
+                                        } else {
+                                            return (
+                                                <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-bold rounded-full border border-slate-200">
+                                                    Registered Only
+                                                </span>
+                                            );
+                                        }
+                                    })()}
                                 </div>
                             </div>
                         </div>
@@ -270,15 +283,32 @@ export const RegisteredMembers: React.FC<RegisteredMembersProps> = ({ members, o
                                             {member.study_purpose}
                                         </td>
                                         <td className="px-6 py-4">
-                                            {hasActivePlan ? (
-                                                <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
-                                                    Active Member
-                                                </span>
-                                            ) : (
-                                                <span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs font-semibold rounded-full">
-                                                    Registered Only
-                                                </span>
-                                            )}
+                                            <td className="px-6 py-4">
+                                                {(() => {
+                                                    const hasPlan = member.subscription_plan;
+                                                    const isExpired = hasPlan && new Date(member.expiry_date) <= new Date();
+
+                                                    if (hasPlan && !isExpired) {
+                                                        return (
+                                                            <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
+                                                                Active Member
+                                                            </span>
+                                                        );
+                                                    } else if (isExpired) {
+                                                        return (
+                                                            <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-semibold rounded-full">
+                                                                Expired
+                                                            </span>
+                                                        );
+                                                    } else {
+                                                        return (
+                                                            <span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs font-semibold rounded-full">
+                                                                Registered Only
+                                                            </span>
+                                                        );
+                                                    }
+                                                })()}
+                                            </td>
                                         </td>
                                         <td className="px-6 py-4 text-right space-x-2">
                                             <button
