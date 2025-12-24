@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { CheckCircle, Loader2 } from 'lucide-react';
 import { SubscriptionPlan, AccessHours, Member } from '../types';
 import { SUBSCRIPTION_PRICES } from '../constants';
+import { checkResourceAvailability } from '../utils/availability';
+import { timeService } from '../services/timeService';
 
 interface MembershipFormProps {
     member: Member; // Required existing member
@@ -17,13 +19,16 @@ interface MembershipFormProps {
         lockerAssigned?: boolean,
         lockerPaymentMode?: 'CASH' | 'UPI' | 'INCLUDED',
         seatNo?: string
-    ) => void;
+    ) => Promise<void>;
     cardsAvailable?: number;
     lockersAvailable?: number;
     onCancel: () => void;
 }
 
 export const MembershipForm: React.FC<MembershipFormProps> = ({ branchId, member, onMembershipComplete, cardsAvailable = 0, lockersAvailable = 0, onCancel }) => {
+    // If card is returned, they don't have an active card, so we allow re-issue
+    const hasActiveCard = member.card_issued && !member.card_returned;
+
     const [formData, setFormData] = useState({
         subscriptionPlan: SubscriptionPlan.MONTH_1,
         dailyAccessHours: AccessHours.HOURS_6,
@@ -34,7 +39,7 @@ export const MembershipForm: React.FC<MembershipFormProps> = ({ branchId, member
         paymentMode: 'CASH' as 'CASH' | 'UPI' | 'SPLIT',
         cashAmount: '',
         upiAmount: '',
-        cardIssued: member.card_issued || false,
+        cardIssued: hasActiveCard,
         cardPaymentMode: 'CASH' as 'CASH' | 'UPI',
         lockerAssigned: member.locker_assigned || false,
         lockerPaymentMode: 'CASH' as 'CASH' | 'UPI' | 'INCLUDED',
@@ -42,6 +47,7 @@ export const MembershipForm: React.FC<MembershipFormProps> = ({ branchId, member
         seatNo: member.seat_no || ''
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [resourceWarnings, setResourceWarnings] = useState<Record<string, { type: 'success' | 'warning' | 'error', msg: string }>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
 
@@ -56,13 +62,14 @@ export const MembershipForm: React.FC<MembershipFormProps> = ({ branchId, member
 
     const calculateTotalAmount = () => {
         let total = Number(formData.price) || 0;
-        if (formData.cardIssued && !member.card_issued) total += 100; // Only charge if new issue
+        if (formData.cardIssued && !hasActiveCard) total += 100; // Charge if they didn't have an active card
         if (formData.lockerAssigned && !member.locker_assigned && formData.dailyAccessHours !== AccessHours.HOURS_24) total += 200; // Only charge if new
         return total;
     };
 
     const calculateExpiryDate = (): string => {
-        const date = new Date();
+        // UPDATED: Use TimeService
+        const date = timeService.getSystemTime();
 
         if (formData.subscriptionPlan === SubscriptionPlan.CUSTOM) {
             const value = Number(formData.customDurationValue);
@@ -79,12 +86,61 @@ export const MembershipForm: React.FC<MembershipFormProps> = ({ branchId, member
         return date.toISOString();
     };
 
-    const validate = () => {
+    const handleCheckAvailability = async (type: 'LOCKER' | 'SEAT', value: string) => {
+        if (!value) return;
+        setResourceWarnings(prev => ({ ...prev, [type]: { type: 'warning', msg: 'Checking...' } }));
+
+        const result = await checkResourceAvailability(type, value, member.id);
+
+        if (!result.available) {
+            setResourceWarnings(prev => ({ ...prev, [type]: { type: 'error', msg: result.message || 'Occupied' } }));
+            return false;
+        } else {
+            if (result.message) {
+                // Available but was held by expired member
+                setResourceWarnings(prev => ({ ...prev, [type]: { type: 'success', msg: result.message } }));
+            } else {
+                // Completely new
+                setResourceWarnings(prev => {
+                    const next = { ...prev };
+                    delete next[type];
+                    return next;
+                });
+            }
+            return true;
+        }
+    };
+
+    const validate = async () => {
         const newErrors: Record<string, string> = {};
+
+        // Stock Validation
+        if (!hasActiveCard && formData.cardIssued && cardsAvailable !== undefined && cardsAvailable <= 0) {
+            alert("Card limit reached for this branch. Cannot issue new card.");
+            return false;
+        }
+        if (!member.locker_assigned && formData.lockerAssigned && lockersAvailable !== undefined && lockersAvailable <= 0) {
+            alert("Locker limit reached for this branch. Cannot assign new locker.");
+            return false;
+        }
+
         if (!formData.price || Number(formData.price) <= 0) newErrors.price = "Please enter a valid amount.";
 
-        if (formData.lockerAssigned && !formData.lockerNumber) {
-            newErrors.lockerNumber = "Locker number is required.";
+        if (formData.lockerAssigned) {
+            if (!formData.lockerNumber || formData.lockerNumber.trim().length === 0) newErrors.lockerNumber = "Locker number is required.";
+
+            // Allow proceed if it's strictly available (even if expired held it)
+            // But we should re-verify on submit to be safe or rely on the visible warning blocking user intent?
+            // Let's do a quick blocking check:
+            const lockerCheck = await checkResourceAvailability('LOCKER', formData.lockerNumber, member.id);
+            if (!lockerCheck.available) newErrors.lockerNumber = lockerCheck.message || "Locker Occupied";
+        }
+
+        if (!formData.seatNo || formData.seatNo.trim().length === 0) {
+            newErrors.seatNo = "Assigned Seat Number is required (enter 'No' or '-' if none).";
+        } else {
+            const seatCheck = await checkResourceAvailability('SEAT', formData.seatNo, member.id);
+            if (!seatCheck.available) newErrors.seatNo = seatCheck.message || "Seat Occupied";
         }
 
         if (formData.subscriptionPlan === SubscriptionPlan.CUSTOM) {
@@ -112,7 +168,8 @@ export const MembershipForm: React.FC<MembershipFormProps> = ({ branchId, member
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!validate()) return;
+        const isValid = await validate();
+        if (!isValid) return;
         setIsSubmitting(true);
 
         try {
@@ -132,9 +189,9 @@ export const MembershipForm: React.FC<MembershipFormProps> = ({ branchId, member
                 subscription_plan: planLabel,
                 daily_access_hours: accessHoursLabel,
                 expiry_date: expiryDate,
-                join_date: member.join_date || new Date().toISOString(),
+                join_date: member.join_date || timeService.toISOString(),
                 card_issued: formData.cardIssued,
-                card_payment_mode: (formData.cardIssued && !member.card_issued) ? formData.cardPaymentMode : member.card_payment_mode,
+                card_payment_mode: (formData.cardIssued && !hasActiveCard) ? formData.cardPaymentMode : member.card_payment_mode,
                 locker_assigned: formData.lockerAssigned,
                 locker_payment_mode: (formData.lockerAssigned && !member.locker_assigned) ? formData.lockerPaymentMode : member.locker_payment_mode,
                 locker_number: formData.lockerAssigned ? formData.lockerNumber : undefined,
@@ -145,9 +202,8 @@ export const MembershipForm: React.FC<MembershipFormProps> = ({ branchId, member
             const cashAmt = formData.paymentMode === 'SPLIT' ? Number(formData.cashAmount) || 0 : undefined;
             const upiAmt = formData.paymentMode === 'SPLIT' ? Number(formData.upiAmount) || 0 : undefined;
 
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            onMembershipComplete(
+            // UPDATED: Await completion
+            await onMembershipComplete(
                 updatedMember,
                 amount,
                 formData.paymentMode,
@@ -163,8 +219,9 @@ export const MembershipForm: React.FC<MembershipFormProps> = ({ branchId, member
             setShowSuccess(true);
             setTimeout(() => setShowSuccess(false), 3000);
 
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
+            setErrors(prev => ({ ...prev, form: "Activation Failed: " + (err.message || "Unknown error") }));
         } finally {
             setIsSubmitting(false);
         }
@@ -342,8 +399,10 @@ export const MembershipForm: React.FC<MembershipFormProps> = ({ branchId, member
                         <div className="bg-violet-50 p-4 rounded-lg border border-violet-200">
                             <div className="flex justify-between">
                                 <label className="font-medium text-violet-800">Library Card</label>
-                                {member.card_issued ? (
+                                {hasActiveCard ? (
                                     <span className="text-xs bg-violet-200 text-violet-800 px-2 py-1 rounded">Already Issued</span>
+                                ) : cardsAvailable <= 0 ? (
+                                    <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded font-bold">Out of Stock</span>
                                 ) : (
                                     <div className="flex bg-white rounded border border-violet-200 p-0.5">
                                         <button type="button" onClick={() => setFormData(p => ({ ...p, cardIssued: false }))} className={`px-3 py-1 text-xs rounded ${!formData.cardIssued ? 'bg-violet-600 text-white' : ''}`}>No</button>
@@ -351,7 +410,7 @@ export const MembershipForm: React.FC<MembershipFormProps> = ({ branchId, member
                                     </div>
                                 )}
                             </div>
-                            {!member.card_issued && formData.cardIssued && (
+                            {!hasActiveCard && formData.cardIssued && (
                                 <div className="mt-2">
                                     <p className="text-xs text-violet-600 mb-1">Payment Method:</p>
                                     <div className="flex space-x-2">
@@ -368,6 +427,8 @@ export const MembershipForm: React.FC<MembershipFormProps> = ({ branchId, member
                                 <label className="font-medium text-pink-800">Locker</label>
                                 {member.locker_assigned ? (
                                     <span className="text-xs bg-pink-200 text-pink-800 px-2 py-1 rounded">Assigned ({member.locker_number})</span>
+                                ) : lockersAvailable <= 0 ? (
+                                    <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded font-bold">Out of Stock</span>
                                 ) : (
                                     <div className="flex bg-white rounded border border-pink-200 p-0.5">
                                         <button type="button" onClick={() => setFormData(p => ({ ...p, lockerAssigned: false }))} className={`px-3 py-1 text-xs rounded ${!formData.lockerAssigned ? 'bg-pink-600 text-white' : ''}`}>No</button>
@@ -382,8 +443,14 @@ export const MembershipForm: React.FC<MembershipFormProps> = ({ branchId, member
                                         placeholder="Locker Number"
                                         value={formData.lockerNumber}
                                         onChange={e => setFormData(p => ({ ...p, lockerNumber: e.target.value }))}
-                                        className="w-full px-2 py-1 text-sm border rounded"
+                                        onBlur={() => handleCheckAvailability('LOCKER', formData.lockerNumber)}
+                                        className={`w-full px-2 py-1 text-sm border rounded ${resourceWarnings['LOCKER']?.type === 'error' ? 'border-red-500' : resourceWarnings['LOCKER']?.type === 'success' ? 'border-green-500' : ''}`}
                                     />
+                                    {resourceWarnings['LOCKER'] && (
+                                        <p className={`text-xs ${resourceWarnings['LOCKER'].type === 'error' ? 'text-red-500' : 'text-green-600'}`}>
+                                            {resourceWarnings['LOCKER'].msg}
+                                        </p>
+                                    )}
                                     {errors.lockerNumber && <p className="text-red-500 text-xs">{errors.lockerNumber}</p>}
 
                                     {formData.dailyAccessHours !== AccessHours.HOURS_24 ? (
@@ -401,14 +468,20 @@ export const MembershipForm: React.FC<MembershipFormProps> = ({ branchId, member
 
                     {/* Seat Number Section */}
                     <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Assigned Seat Number (Can't be added later)</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Assigned Seat Number *</label>
                         <input
                             type="text"
                             placeholder="e.g. A-15"
                             value={formData.seatNo}
                             onChange={(e) => setFormData({ ...formData, seatNo: e.target.value })}
-                            className="w-full md:w-1/3 px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+                            onBlur={() => handleCheckAvailability('SEAT', formData.seatNo)}
+                            className={`w-full md:w-1/3 px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-200 focus:outline-none ${resourceWarnings['SEAT']?.type === 'error' ? 'border-red-500' : resourceWarnings['SEAT']?.type === 'success' ? 'border-green-500' : ''}`}
                         />
+                        {resourceWarnings['SEAT'] && (
+                            <p className={`text-xs mt-1 ${resourceWarnings['SEAT'].type === 'error' ? 'text-red-500' : 'text-green-600'}`}>
+                                {resourceWarnings['SEAT'].msg}
+                            </p>
+                        )}
                     </div>
 
                     <div className="border-t border-slate-200 pt-4 flex justify-between items-center">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Phone, Mail, MapPin, Calendar, CreditCard, Lock, Save, Clock } from 'lucide-react';
 import { SubscriptionPlan, AccessHours, Member } from '../types';
+import { checkResourceAvailability } from '../utils/availability';
 
 interface OldMemberEntryProps {
     onComplete: (
@@ -9,9 +10,11 @@ interface OldMemberEntryProps {
         allocations: any
     ) => void;
     branchId: string;
+    cardsAvailable?: number;
+    lockersAvailable?: number;
 }
 
-export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, branchId }) => {
+export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, branchId, cardsAvailable, lockersAvailable }) => {
     // 1. Personal Details
     const [personal, setPersonal] = useState({
         fullName: '',
@@ -45,6 +48,7 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
         lockerNumber: '',
         lockerPaymentMode: 'CASH' as 'CASH' | 'UPI'
     });
+    const [resourceWarnings, setResourceWarnings] = useState<Record<string, { type: 'success' | 'warning' | 'error', msg: string }>>({});
 
     // Auto-set free locker for 24 Hours plan
     useEffect(() => {
@@ -58,6 +62,27 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
             }));
         }
     }, [membership.accessHours]);
+
+    const handleCheckAvailability = async (type: 'LOCKER' | 'SEAT', value: string) => {
+        if (!value) return;
+        setResourceWarnings(prev => ({ ...prev, [type]: { type: 'warning', msg: 'Checking...' } }));
+
+        const result = await checkResourceAvailability(type, value);
+
+        if (!result.available) {
+            setResourceWarnings(prev => ({ ...prev, [type]: { type: 'error', msg: result.message || 'Occupied' } }));
+        } else {
+            if (result.message) {
+                setResourceWarnings(prev => ({ ...prev, [type]: { type: 'success', msg: result.message } }));
+            } else {
+                setResourceWarnings(prev => {
+                    const next = { ...prev };
+                    delete next[type];
+                    return next;
+                });
+            }
+        }
+    };
 
     const calculateTotal = () => {
         let total = Number(membership.paymentAmount) || 0;
@@ -78,6 +103,29 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
                 alert(`Split amounts (₹${cash + upi}) must match Membership Fee (₹${fee})`);
                 return;
             }
+        }
+
+        // Validate Stock
+        if (allocations.lockerAssigned && lockersAvailable !== undefined && lockersAvailable <= 0) {
+            alert("Locker limit reached for this branch. Cannot assign new locker.");
+            return;
+        }
+        if (allocations.cardIssued && cardsAvailable !== undefined && cardsAvailable <= 0) {
+            alert("Card limit reached for this branch. Cannot issue new card.");
+            return;
+        }
+
+        // Validate Mandatory Fields
+        if (allocations.lockerAssigned) {
+            if (!allocations.lockerNumber || allocations.lockerNumber.trim().length === 0) {
+                alert("Locker Number is required when Locker is assigned.");
+                return;
+            }
+        }
+
+        if (!allocations.seatNo || allocations.seatNo.trim().length === 0) {
+            alert("Assigned Seat Number is required.");
+            return;
         }
 
         // mimic MembershipForm logic
@@ -345,14 +393,20 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* Seat */}
                         <div className="bg-slate-50 p-4 rounded-lg">
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Assigned Seat No.</label>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Assigned Seat No. *</label>
                             <input
                                 type="text"
                                 placeholder="e.g. A-1"
                                 className="w-full px-3 py-2 border rounded-lg bg-white"
                                 value={allocations.seatNo}
                                 onChange={e => setAllocations({ ...allocations, seatNo: e.target.value })}
+                                onBlur={() => handleCheckAvailability('SEAT', allocations.seatNo)}
                             />
+                            {resourceWarnings['SEAT'] && (
+                                <p className={`text-xs mt-1 ${resourceWarnings['SEAT'].type === 'error' ? 'text-red-500' : 'text-green-600'}`}>
+                                    {resourceWarnings['SEAT'].msg}
+                                </p>
+                            )}
                         </div>
 
                         {/* Locker */}
@@ -369,12 +423,19 @@ export const OldMemberEntry: React.FC<OldMemberEntryProps> = ({ onComplete, bran
                             {allocations.lockerAssigned && (
                                 <>
                                     <input
+                                        required
                                         type="text"
                                         placeholder="Locker Number"
                                         className="w-full px-3 py-2 border rounded-lg bg-white"
                                         value={allocations.lockerNumber}
                                         onChange={e => setAllocations({ ...allocations, lockerNumber: e.target.value })}
+                                        onBlur={() => handleCheckAvailability('LOCKER', allocations.lockerNumber)}
                                     />
+                                    {resourceWarnings['LOCKER'] && (
+                                        <p className={`text-xs ${resourceWarnings['LOCKER'].type === 'error' ? 'text-red-500' : 'text-green-600'}`}>
+                                            {resourceWarnings['LOCKER'].msg}
+                                        </p>
+                                    )}
                                     <select
                                         className="w-full px-3 py-2 border rounded-lg bg-white"
                                         value={allocations.lockerPaymentMode}

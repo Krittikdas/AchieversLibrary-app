@@ -143,6 +143,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
     };
 
     const selectedPeriodRevenue = calculateFilteredRevenue();
+    const joiningPeriodRevenue = calculateFilteredRevenue(TransactionType.MEMBERSHIP) + calculateFilteredRevenue(TransactionType.LOCKER) + calculateFilteredRevenue(TransactionType.CARD);
     const selectedPeriodSnackRevenue = calculateFilteredRevenue(TransactionType.SNACK);
 
     // --- Joining Calculations (Selected Period) ---
@@ -187,7 +188,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
         });
 
         transactions.forEach(t => {
-            if (t.type === TransactionType.MEMBERSHIP || t.type === TransactionType.LOCKER) { // Include locker transactions in joining revenue
+            if (t.type === TransactionType.MEMBERSHIP || t.type === TransactionType.LOCKER || t.type === TransactionType.CARD) { // Include locker/card transactions in joining revenue
                 const d = new Date(t.timestamp);
                 const cutoff = new Date();
                 cutoff.setDate(cutoff.getDate() - days);
@@ -565,6 +566,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, transactions, sna
                             <p className="text-3xl font-bold text-emerald-600">{selectedPeriodJoinings}</p>
                         </div>
                         <UserPlus className="text-emerald-200" size={40} />
+                    </div>
+                    <div className="p-6 bg-blue-50 rounded-xl border border-blue-100 flex items-center justify-between">
+                        <div>
+                            <h4 className="text-blue-800 font-semibold mb-2">Revenue (Selected Period)</h4>
+                            <p className="text-3xl font-bold text-blue-600">₹{joiningPeriodRevenue}</p>
+                        </div>
+                        <TrendingUp className="text-blue-200" size={40} />
+                    </div>
+                    <div className="p-6 bg-indigo-50 rounded-xl border border-indigo-100 flex items-center justify-between">
+                        <div>
+                            <h4 className="text-indigo-800 font-semibold mb-2">Membership Fee (Selected Period)</h4>
+                            <p className="text-3xl font-bold text-indigo-600">₹{selectedPeriodJoinings * 300}</p>
+                        </div>
+                        <Tag className="text-indigo-200" size={40} />
                     </div>
                 </div>
             </div>

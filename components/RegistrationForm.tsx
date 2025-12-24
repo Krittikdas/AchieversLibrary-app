@@ -6,7 +6,7 @@ import { supabase } from '../supabaseClient';
 interface RegistrationFormProps {
     branchId: string;
     branchName: string;
-    onRegisterSuccess: (member: Member, amount: number, paymentMode: 'CASH' | 'UPI' | 'SPLIT', cashAmt?: number, upiAmt?: number) => void;
+    onRegisterSuccess: (member: Member, amount: number, paymentMode: 'CASH' | 'UPI' | 'SPLIT', cashAmt?: number, upiAmt?: number) => Promise<void>;
 }
 
 export const RegistrationForm: React.FC<RegistrationFormProps> = ({ branchId, branchName, onRegisterSuccess }) => {
@@ -19,7 +19,8 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({ branchId, br
         registeredBy: '',
         paymentMode: 'CASH' as 'CASH' | 'UPI' | 'SPLIT',
         cashAmount: '',
-        upiAmount: ''
+        upiAmount: '',
+        seatNo: ''
     });
 
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -35,7 +36,9 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({ branchId, br
         if (!/^\d{10}$/.test(formData.phone)) newErrors.phone = "Enter a valid 10-digit phone number.";
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) newErrors.email = "Enter a valid email address.";
         if (formData.studyPurpose.length < 2) newErrors.studyPurpose = "Please enter a purpose (e.g. UPSC).";
+        if (formData.studyPurpose.length < 2) newErrors.studyPurpose = "Please enter a purpose (e.g. UPSC).";
         if (formData.registeredBy.length < 2) newErrors.registeredBy = "Receptionist name required.";
+        if (!formData.seatNo || formData.seatNo.trim().length === 0) newErrors.seatNo = "Seat number is required.";
 
         if (formData.paymentMode === 'SPLIT') {
             const cashAmt = Number(formData.cashAmount) || 0;
@@ -103,17 +106,16 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({ branchId, br
                 card_issued: false,
                 card_returned: false,
                 locker_assigned: false,
+                seat_no: formData.seatNo
             };
 
             const cashAmt = formData.paymentMode === 'SPLIT' ? Number(formData.cashAmount) || 0 : undefined;
             const upiAmt = formData.paymentMode === 'SPLIT' ? Number(formData.upiAmount) || 0 : undefined;
 
-            // Simulate API call delay
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // UPDATED: Await the resolution of the parent handler
+            await onRegisterSuccess(newMember, REGISTRATION_FEE, formData.paymentMode, cashAmt, upiAmt);
 
-            onRegisterSuccess(newMember, REGISTRATION_FEE, formData.paymentMode, cashAmt, upiAmt);
-
-            // Reset Form
+            // Only reach here if no error was thrown
             setFormData({
                 fullName: '',
                 address: '',
@@ -123,14 +125,16 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({ branchId, br
                 registeredBy: '',
                 paymentMode: 'CASH',
                 cashAmount: '',
-                upiAmount: ''
+                upiAmount: '',
+                seatNo: ''
             });
             setErrors({});
             setShowSuccess(true);
             setTimeout(() => setShowSuccess(false), 3000);
 
-        } catch (err) {
-            console.error(err);
+        } catch (err: any) {
+            console.error("Registration failed:", err);
+            setErrors(prev => ({ ...prev, form: "Registration Failed: " + (err.message || "Unknown error") }));
         } finally {
             setIsSubmitting(false);
         }
@@ -253,6 +257,20 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({ branchId, br
                         </div>
                     </div>
 
+                    <div>
+                        <label htmlFor="seat-no" className="block text-sm font-medium text-slate-700 mb-1">Assigned Seat Number *</label>
+                        <input
+                            id="seat-no"
+                            name="seatNo"
+                            type="text"
+                            value={formData.seatNo}
+                            onChange={(e) => setFormData({ ...formData, seatNo: e.target.value })}
+                            className={`w-full px-3 py-2 rounded-lg border ${errors.seatNo ? 'border-red-500' : 'border-slate-300'} focus:ring-2 focus:ring-indigo-200 focus:outline-none`}
+                            placeholder="e.g. A-15"
+                        />
+                        {errors.seatNo && <p className="text-red-500 text-xs mt-1">{errors.seatNo}</p>}
+                    </div>
+
                     <hr className="border-slate-100" />
 
                     {/* Payment Mode */}
@@ -360,7 +378,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({ branchId, br
                         </div>
                     </div>
                 </form>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 };

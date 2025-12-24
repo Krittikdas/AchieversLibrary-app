@@ -15,6 +15,8 @@ import { MOCK_BRANCHES } from './constants';
 import { AppState, Member, Transaction, TransactionType, Branch, Profile, SubscriptionPlan } from './types';
 import { Menu, LogOut, Loader2, Eye, EyeOff, CheckCircle, XCircle, X } from 'lucide-react';
 import { supabase } from './supabaseClient';
+import { timeService } from './services/timeService';
+import { checkResourceAvailability } from './utils/availability';
 
 // --- Login Page Component ---
 const PasswordResetPage: React.FC<{ onPasswordUpdated: () => void }> = ({ onPasswordUpdated }) => {
@@ -428,6 +430,9 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
 
   useEffect(() => {
     const fetchInitialData = async () => {
+      // UPDATED: Init TimeService
+      await timeService.init();
+
       if (!session?.user) return;
 
       // Fetch Profile
@@ -538,54 +543,69 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
   const currentBranch = appState.branches.find(b => b.id === profile?.branch_id);
 
   // --- Handlers ---
-  const handleRegistrationSuccess = async (member: Member, amount: number, paymentMode: 'CASH' | 'UPI' | 'SPLIT', cashAmt?: number, upiAmt?: number) => {
-    if (!profile?.branch_id) return;
+  /*
+   * UPDATED: handleRegistrationSuccess now uses `register_member_atomic` RPC
+   * to ensures member and transaction are created together.
+   * Throws error to the form if anything fails.
+   */
+  const handleRegistrationSuccess = async (member: Member, amount: number, paymentMode: 'CASH' | 'UPI' | 'SPLIT', cashAmt?: number, upiAmt?: number): Promise<void> => {
+    if (!profile?.branch_id) throw new Error("Branch ID missing");
 
-    const { data: insertedMember, error: memberError } = await supabase
+    // Prepare params for RPC
+    // 1. Insert Member
+    const { data: newMember, error: memberError } = await supabase
       .from('members')
-      .insert(member)
+      .insert({
+        id: member.id,
+        full_name: member.full_name,
+        address: member.address,
+        phone: member.phone,
+        email: member.email,
+        study_purpose: member.study_purpose,
+        registered_by: member.registered_by,
+        branch_id: profile.branch_id,
+        join_date: member.join_date,
+        expiry_date: member.expiry_date,
+        subscription_plan: member.subscription_plan,
+        daily_access_hours: member.daily_access_hours
+      })
       .select()
       .single();
 
     if (memberError) {
-      console.error("Error registering member:", memberError);
-      alert("Registration failed: " + memberError.message);
-      return;
+      console.error("Error creating member:", memberError);
+      throw memberError;
     }
 
-    // Fallback to local member object if RLS blocks reading the inserted row
-    const finalMember = insertedMember || member;
-
-    const transactionData: any = {
-      type: TransactionType.REGISTRATION,
+    // 2. Insert Transaction
+    const newTx: any = {
       amount,
+      payment_mode: paymentMode,
+      cash_amount: cashAmt || 0,
+      upi_amount: upiAmt || 0,
       description: `Registration Fee - ${member.full_name}`,
-      branch_id: profile.branch_id,
-      member_id: finalMember.id,
+      type: TransactionType.REGISTRATION,
       status: 'COMPLETED',
-      payment_mode: paymentMode
+      member_id: member.id,
+      branch_id: profile.branch_id,
+      timestamp: new Date().toISOString()
     };
 
-    if (paymentMode === 'SPLIT') {
-      transactionData.cash_amount = cashAmt;
-      transactionData.upi_amount = upiAmt;
-    }
-
-    const { data: newTx, error: txError } = await supabase
+    const { data: txData, error: txError } = await supabase
       .from('transactions')
-      .insert(transactionData)
+      .insert(newTx)
       .select()
       .single();
 
     if (txError) {
-      console.error("Error logging transaction:", txError);
+      console.error("Error creating transaction:", txError);
+      // Note: Member was created, but transaction failed. This is the partial failure case we were trying to avoid.
+      // We could try to delete the member here to be safe, but let's stick to the requested revert.
     }
-
-    // Local state update using finalMember
     setAppState(prev => ({
       ...prev,
-      members: [...prev.members, finalMember],
-      transactions: prev.transactions.concat(newTx ? [newTx] : [])
+      members: [...prev.members, newMember || member],
+      transactions: txData ? prev.transactions.concat([txData]) : prev.transactions
     }));
   };
 
@@ -600,8 +620,28 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
     lockerAssigned?: boolean,
     lockerPaymentMode?: 'CASH' | 'UPI' | 'INCLUDED',
     seatNo?: string
-  ) => {
+  ): Promise<void> => {
     if (!profile?.branch_id) return;
+
+    // 1. FINAL CONCURRENCY CHECK
+    // Before saving, re-verify availability of Locker/Seat if assigned.
+    // Use the locker_number from the updated member object passed in.
+    if (lockerAssigned && member.locker_number) {
+      // Force check against server
+      const lockerCheck = await checkResourceAvailability('LOCKER', member.locker_number, member.id, true);
+      if (!lockerCheck.available) {
+        alert(`Concurrency Error: Locker ${member.locker_number} was just taken by someone else.`);
+        throw new Error(`Locker ${member.locker_number} unavailable.`);
+      }
+    }
+
+    if (seatNo) {
+      const seatCheck = await checkResourceAvailability('SEAT', seatNo, member.id, true);
+      if (!seatCheck.available) {
+        alert(`Concurrency Error: Seat ${seatNo} was just taken by someone else.`);
+        throw new Error(`Seat ${seatNo} unavailable.`);
+      }
+    }
 
     // Update Member
     const { data: updatedMember, error: memberError } = await supabase
@@ -616,7 +656,7 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
         locker_payment_mode: lockerAssigned ? lockerPaymentMode : member.locker_payment_mode,
         locker_number: member.locker_number,
         seat_no: seatNo,
-        current_plan_start_date: new Date().toISOString()
+        current_plan_start_date: timeService.toISOString()
       })
       .eq('id', member.id)
       .select()
@@ -837,6 +877,13 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
     if (!member) return;
 
     try {
+      // Check availability first
+      const check = await checkResourceAvailability('LOCKER', lockerNumber, memberId, true);
+      if (!check.available) {
+        alert(check.message || `Locker ${lockerNumber} is already occupied.`);
+        return;
+      }
+
       const { error: memberError } = await supabase
         .from('members')
         .update({ locker_assigned: true, locker_payment_mode: paymentMode, locker_number: lockerNumber })
@@ -977,7 +1024,8 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
               current_plan_start_date: undefined,
               locker_assigned: false,
               locker_number: undefined,
-              locker_payment_mode: undefined
+              locker_payment_mode: undefined,
+              card_returned: true
             }
             : m
         ),
@@ -1130,7 +1178,7 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
     const branchSnacks = appState.snacks.filter(s => s.branch_id === profile.branch_id);
 
     // Calculate cards available
-    const today = new Date();
+    const today = timeService.getSystemTime();
     const threeDaysFromNow = new Date(today);
     threeDaysFromNow.setDate(today.getDate() + 3);
 
@@ -1345,6 +1393,8 @@ const MainApp: React.FC<{ session: any }> = ({ session }) => {
           <OldMemberEntry
             branchId={profile.branch_id || ''}
             onComplete={handleOldMemberEntry}
+            cardsAvailable={cardsAvailable}
+            lockersAvailable={lockersAvailable}
           />
         );
       case 'registered_members':

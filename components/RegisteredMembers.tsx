@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Crown, Eye, X, Calendar, CreditCard, Lock, User, Clock, MapPin, Phone, Mail, Trash2 } from 'lucide-react';
 import { Member } from '../types';
+import { timeService } from '../services/timeService';
 
 interface RegisteredMembersProps {
     members: Member[];
@@ -25,7 +26,9 @@ export const RegisteredMembers: React.FC<RegisteredMembersProps> = ({ members, o
 
         const start = new Date(member.current_plan_start_date).getTime();
         const end = new Date(member.expiry_date).getTime();
-        const now = new Date().getTime();
+
+        // UPDATED: Use TimeService
+        const now = timeService.getSystemTime().getTime();
 
         if (end <= start) return { percent: 100, daysPassed: 0, totalDays: 0, daysLeft: 0 };
 
@@ -42,11 +45,15 @@ export const RegisteredMembers: React.FC<RegisteredMembersProps> = ({ members, o
         return { percent, daysPassed, totalDays, daysLeft };
     };
 
+
     const MemberDetailModal = ({ member, onClose }: { member: Member; onClose: () => void }) => {
-        const hasActivePlan = member.subscription_plan && new Date(member.expiry_date) > new Date();
+        // UPDATED: Use TimeService
+        const now = timeService.getSystemTime();
+        const hasActivePlan = member.subscription_plan && new Date(member.expiry_date) > now;
         const progress = calculateProgress(member);
 
         return (
+
             <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
                 <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
                     {/* Header */}
@@ -60,7 +67,7 @@ export const RegisteredMembers: React.FC<RegisteredMembersProps> = ({ members, o
                                 <p className="text-sm text-slate-500 font-mono">ID: {member.id.split('-')[0]}</p>
                                 <div className="mt-2 flex gap-2">
                                     {(() => {
-                                        const isExpired = member.subscription_plan && new Date(member.expiry_date) <= new Date();
+                                        const isExpired = member.subscription_plan && new Date(member.expiry_date) <= now;
                                         if (hasActivePlan) {
                                             return (
                                                 <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full border border-green-200">
@@ -268,7 +275,8 @@ export const RegisteredMembers: React.FC<RegisteredMembersProps> = ({ members, o
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {filteredMembers.map(member => {
-                                const hasActivePlan = member.subscription_plan && new Date(member.expiry_date) > new Date();
+                                const now = timeService.getSystemTime();
+                                const hasActivePlan = member.subscription_plan && new Date(member.expiry_date) > now;
 
                                 return (
                                     <tr key={member.id} className="hover:bg-slate-50">
@@ -285,8 +293,10 @@ export const RegisteredMembers: React.FC<RegisteredMembersProps> = ({ members, o
                                         <td className="px-6 py-4">
                                             <td className="px-6 py-4">
                                                 {(() => {
+                                                    // Redundant calculation but keeps scope clean
+                                                    const now = timeService.getSystemTime();
                                                     const hasPlan = member.subscription_plan;
-                                                    const isExpired = hasPlan && new Date(member.expiry_date) <= new Date();
+                                                    const isExpired = hasPlan && new Date(member.expiry_date) <= now;
 
                                                     if (hasPlan && !isExpired) {
                                                         return (
